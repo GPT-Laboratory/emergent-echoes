@@ -13,7 +13,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as RunsRouteImport } from './routes/runs'
 import { Route as ReplayRunIdRouteImport } from './routes/replay.$runId'
 import { Route as RunRunIdRouteImport } from './routes/run.$runId'
-import { Route as WorldWorldIdRouteImport } from './routes/world.$worldId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -35,25 +34,18 @@ const RunRunIdRoute = RunRunIdRouteImport.update({
   path: '/run/$runId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const WorldWorldIdRoute = WorldWorldIdRouteImport.update({
-  id: '/world/$worldId',
-  path: '/world/$worldId',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/runs': typeof RunsRoute
   '/replay/$runId': typeof ReplayRunIdRoute
   '/run/$runId': typeof RunRunIdRoute
-  '/world/$worldId': typeof WorldWorldIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/runs': typeof RunsRoute
   '/replay/$runId': typeof ReplayRunIdRoute
   '/run/$runId': typeof RunRunIdRoute
-  '/world/$worldId': typeof WorldWorldIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -61,21 +53,13 @@ export interface FileRoutesById {
   '/runs': typeof RunsRoute
   '/replay/$runId': typeof ReplayRunIdRoute
   '/run/$runId': typeof RunRunIdRoute
-  '/world/$worldId': typeof WorldWorldIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    '/' | '/runs' | '/replay/$runId' | '/run/$runId' | '/world/$worldId'
+  fullPaths: '/' | '/runs' | '/replay/$runId' | '/run/$runId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/runs' | '/replay/$runId' | '/run/$runId' | '/world/$worldId'
-  id:
-    | '__root__'
-    | '/'
-    | '/runs'
-    | '/replay/$runId'
-    | '/run/$runId'
-    | '/world/$worldId'
+  to: '/' | '/runs' | '/replay/$runId' | '/run/$runId'
+  id: '__root__' | '/' | '/runs' | '/replay/$runId' | '/run/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -83,7 +67,6 @@ export interface RootRouteChildren {
   RunsRoute: typeof RunsRoute
   ReplayRunIdRoute: typeof ReplayRunIdRoute
   RunRunIdRoute: typeof RunRunIdRoute
-  WorldWorldIdRoute: typeof WorldWorldIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,13 +99,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RunRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/world/$worldId': {
-      id: '/world/$worldId'
-      path: '/world/$worldId'
-      fullPath: '/world/$worldId'
-      preLoaderRoute: typeof WorldWorldIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -131,7 +107,6 @@ const rootRouteChildren: RootRouteChildren = {
   RunsRoute: RunsRoute,
   ReplayRunIdRoute: ReplayRunIdRoute,
   RunRunIdRoute: RunRunIdRoute,
-  WorldWorldIdRoute: WorldWorldIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
