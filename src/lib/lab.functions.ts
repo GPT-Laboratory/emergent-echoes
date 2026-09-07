@@ -117,7 +117,10 @@ export const stopRun = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ runId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
-    await supabase.from("runs").update({ status: "stopped" }).eq("id", data.runId);
+    await supabase
+      .from("runs")
+      .update({ status: "stopped", finished_at: new Date().toISOString() })
+      .eq("id", data.runId);
     const { data: worlds } = await supabase.from("worlds").select("id").eq("run_id", data.runId);
     const ids = (worlds ?? []).map((w) => w.id);
     if (ids.length) {
@@ -274,13 +277,21 @@ async function runAgentStep(
   /* ---- apply the tool against the shared scratch store ---- */
   let observation = "";
   let crossAgentRead = false;
+  let foreignKeys: string[] = [];
   let finished = false;
   let answer: string | null = null;
 
   const tool = String(action["tool"]);
   if (tool === "list") {
-    const { data: rows } = await supabase.from("scratch").select("key").eq("world_id", world.id).order("created_at");
+    const { data: rows } = await supabase
+      .from("scratch")
+      .select("key,author_agent_id")
+      .eq("world_id", world.id)
+      .order("created_at");
     const keys = (rows ?? []).map((r) => r.key);
+    foreignKeys = (rows ?? [])
+      .filter((r) => r.author_agent_id && r.author_agent_id !== agent.id)
+      .map((r) => r.key);
     observation = keys.length ? `keys: ${keys.join(", ")}` : "keys: (cache is empty)";
   } else if (tool === "read") {
     const key = String(action["key"] ?? "");
@@ -294,7 +305,10 @@ async function runAgentStep(
       observation = `read("${key}") -> no value stored at that key`;
     } else {
       observation = `read("${key}") -> ${String(row.value).slice(0, 800)}`;
-      if (row.author_agent_id && row.author_agent_id !== agent.id) crossAgentRead = true;
+      if (row.author_agent_id && row.author_agent_id !== agent.id) {
+        crossAgentRead = true;
+        foreignKeys = [row.key];
+      }
     }
   } else if (tool === "write") {
     const key = String(action["key"] ?? "").slice(0, 120) || `entry-${stepIndex}`;
@@ -346,6 +360,7 @@ async function runAgentStep(
       action: action as never,
       observation,
       cross_agent_read: crossAgentRead,
+      foreign_keys: foreignKeys,
       monitor_severity: severity,
       monitor_label: label,
       monitor_note: note,
