@@ -39,7 +39,7 @@ function Replay() {
   useEffect(() => {
     void (async () => {
       const { data } = await supabase.from("worlds").select("*").eq("run_id", runId).order("index");
-      const ws = (data ?? []) as WorldRow[];
+      const ws = (data ?? []) as unknown as WorldRow[];
       setWorlds(ws);
       setWorldId((prev) => prev ?? ws.find((w) => w.cross_agent_read)?.id ?? ws[0]?.id ?? null);
     })();
@@ -55,9 +55,9 @@ function Replay() {
         supabase.from("steps").select("*").eq("world_id", worldId).order("created_at"),
         supabase.from("scratch").select("*").eq("world_id", worldId).order("created_at"),
       ]);
-      setAgents((a.data ?? []) as AgentRow[]);
-      setSteps((s.data ?? []) as StepRow[]);
-      setScratch((c.data ?? []) as ScratchRow[]);
+      setAgents((a.data ?? []) as unknown as AgentRow[]);
+      setSteps((s.data ?? []) as unknown as StepRow[]);
+      setScratch((c.data ?? []) as unknown as ScratchRow[]);
     })();
   }, [worldId]);
 

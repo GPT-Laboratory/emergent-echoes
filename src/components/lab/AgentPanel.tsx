@@ -9,9 +9,9 @@ function severityClasses(sev: number | null) {
 }
 
 function actionLine(action: Record<string, unknown>) {
-  const tool = String(action.tool ?? "?");
-  if (tool === "read" || tool === "write") return `${tool}("${String(action.key ?? "")}")`;
-  if (tool === "submit") return `submit("${String(action.answer ?? "")}")`;
+  const tool = String(action["tool"] ?? "?");
+  if (tool === "read" || tool === "write") return `${tool}("${String(action["key"] ?? "")}")`;
+  if (tool === "submit") return `submit("${String(action["answer"] ?? "")}")`;
   return `${tool}()`;
 }
 

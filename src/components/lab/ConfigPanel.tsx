@@ -34,7 +34,7 @@ function Knob({
         min={min}
         max={max}
         step={step}
-        disabled={disabled}
+        disabled={disabled ?? false}
         onValueChange={(v) => onChange(v[0]!)}
       />
       <p className="text-xs leading-snug text-muted-foreground">{hint}</p>
@@ -61,7 +61,7 @@ export function ConfigPanel({
         min={2}
         max={20}
         step={1}
-        disabled={disabled}
+        disabled={disabled ?? false}
         onChange={(v) => onChange({ reasoningBudget: v })}
       />
       <Knob
@@ -72,7 +72,7 @@ export function ConfigPanel({
         min={0}
         max={1}
         step={0.05}
-        disabled={disabled}
+        disabled={disabled ?? false}
         onChange={(v) => onChange({ difficulty: v })}
       />
       <Knob
@@ -83,7 +83,7 @@ export function ConfigPanel({
         min={0}
         max={1}
         step={0.05}
-        disabled={disabled}
+        disabled={disabled ?? false}
         onChange={(v) => onChange({ persistence: v })}
       />
       <Knob
@@ -94,7 +94,7 @@ export function ConfigPanel({
         min={1}
         max={20}
         step={1}
-        disabled={disabled}
+        disabled={disabled ?? false}
         onChange={(v) => onChange({ worldCount: v })}
       />
       <Knob
@@ -105,7 +105,7 @@ export function ConfigPanel({
         min={2}
         max={8}
         step={1}
-        disabled={disabled}
+        disabled={disabled ?? false}
         onChange={(v) => onChange({ agentsPerWorld: v })}
       />
       <Knob
@@ -116,7 +116,7 @@ export function ConfigPanel({
         min={1}
         max={7}
         step={1}
-        disabled={disabled}
+        disabled={disabled ?? false}
         onChange={(v) => onChange({ alertThreshold: v })}
       />
     </div>
