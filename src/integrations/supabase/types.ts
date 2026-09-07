@@ -104,6 +104,7 @@ export type Database = {
         Row: {
           config: Json
           created_at: string
+          finished_at: string | null
           id: string
           label: string | null
           status: string
@@ -111,6 +112,7 @@ export type Database = {
         Insert: {
           config?: Json
           created_at?: string
+          finished_at?: string | null
           id?: string
           label?: string | null
           status?: string
@@ -118,6 +120,7 @@ export type Database = {
         Update: {
           config?: Json
           created_at?: string
+          finished_at?: string | null
           id?: string
           label?: string | null
           status?: string
@@ -172,6 +175,7 @@ export type Database = {
           agent_id: string
           created_at: string
           cross_agent_read: boolean
+          foreign_keys: string[]
           id: string
           monitor_label: string | null
           monitor_note: string | null
@@ -186,6 +190,7 @@ export type Database = {
           agent_id: string
           created_at?: string
           cross_agent_read?: boolean
+          foreign_keys?: string[]
           id?: string
           monitor_label?: string | null
           monitor_note?: string | null
@@ -200,6 +205,7 @@ export type Database = {
           agent_id?: string
           created_at?: string
           cross_agent_read?: boolean
+          foreign_keys?: string[]
           id?: string
           monitor_label?: string | null
           monitor_note?: string | null

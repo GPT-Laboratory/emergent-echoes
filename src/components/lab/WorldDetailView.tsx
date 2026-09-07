@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 
@@ -9,27 +9,8 @@ import { useWorldDetail } from "@/lib/lab-client";
 import { recordHumanAction, stopRun } from "@/lib/lab.functions";
 import { supabase } from "@/integrations/supabase/client";
 
-export const Route = createFileRoute("/world/$worldId")({
-  head: () => ({
-    meta: [
-      { title: "World detail — Emergent Agent Coordination Lab" },
-      {
-        name: "description",
-        content:
-          "Live reasoning, tool calls, shared cache and monitor flags for one world of autonomous agents.",
-      },
-      { property: "og:title", content: "World detail — Emergent Agent Coordination Lab" },
-      {
-        property: "og:description",
-        content: "Watch one world's agents reason, write to a shared cache, and be scored by the monitor.",
-      },
-    ],
-  }),
-  component: WorldDetail,
-});
+export function WorldDetailView({ worldId, runId }: { worldId: string; runId: string }) {
 
-function WorldDetail() {
-  const { worldId } = Route.useParams();
   const { world, agents, steps, scratch, alerts } = useWorldDetail(worldId);
   const doHuman = useServerFn(recordHumanAction);
   const doStop = useServerFn(stopRun);
@@ -89,8 +70,12 @@ function WorldDetail() {
   return (
     <main className="mx-auto max-w-[1600px] px-5 py-6">
       <div className="mb-4 flex flex-wrap items-center gap-4">
-        <Link to="/" className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-primary">
-          ← Lab
+        <Link
+          to="/run/$runId"
+          params={{ runId }}
+          className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-primary"
+        >
+          ← Back to this run
         </Link>
         <h1 className="font-mono text-sm text-foreground">
           WORLD {world ? String(world.index).padStart(2, "0") : "…"}
