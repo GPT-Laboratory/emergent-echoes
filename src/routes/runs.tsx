@@ -1,0 +1,120 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+
+import { supabase } from "@/integrations/supabase/client";
+import type { LabConfig } from "@/lib/lab-types";
+
+export const Route = createFileRoute("/runs")({
+  head: () => ({
+    meta: [
+      { title: "Run archive — Emergent Agent Coordination Lab" },
+      {
+        name: "description",
+        content: "Every recorded run with its pressure settings and how often coordination emerged.",
+      },
+      { property: "og:title", content: "Run archive — Emergent Agent Coordination Lab" },
+      {
+        property: "og:description",
+        content: "Browse and replay recorded runs of the agent coordination experiment.",
+      },
+    ],
+  }),
+  component: Runs,
+});
+
+type Row = {
+  id: string;
+  created_at: string;
+  label: string | null;
+  status: string;
+  config: LabConfig;
+  worlds: number;
+  emerged: number;
+};
+
+function Runs() {
+  const [rows, setRows] = useState<Row[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      const { data: runs } = await supabase
+        .from("runs")
+        .select("id,created_at,label,status,config")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      const { data: worlds } = await supabase.from("worlds").select("run_id,cross_agent_read,solicit_write");
+      setRows(
+        (runs ?? []).map((r) => {
+          const ws = (worlds ?? []).filter((w) => w.run_id === r.id);
+          return {
+            ...r,
+            config: r.config as LabConfig,
+            worlds: ws.length,
+            emerged: ws.filter((w) => w.cross_agent_read || w.solicit_write).length,
+          };
+        }),
+      );
+    })();
+  }, []);
+
+  return (
+    <main className="mx-auto max-w-[1200px] px-5 py-6">
+      <h1 className="text-lg font-semibold text-foreground">Run archive</h1>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Recorded outcomes, including runs where no coordination emerged.
+      </p>
+
+      <div className="mt-5 overflow-hidden rounded-md border border-border">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-card/70 font-mono uppercase tracking-widest text-[10px] text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2">Run</th>
+              <th className="px-3 py-2">Difficulty</th>
+              <th className="px-3 py-2">Reasoning</th>
+              <th className="px-3 py-2">Persistence</th>
+              <th className="px-3 py-2">Worlds</th>
+              <th className="px-3 py-2">Emergence</th>
+              <th className="px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+                  No runs recorded yet.
+                </td>
+              </tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.id} className="bg-background/40">
+                <td className="px-3 py-2 font-mono">
+                  {new Date(r.created_at).toLocaleString()}
+                  <span className="ml-2 text-muted-foreground">{r.status}</span>
+                </td>
+                <td className="px-3 py-2 font-mono">{Math.round((r.config?.difficulty ?? 0) * 100)}%</td>
+                <td className="px-3 py-2 font-mono">{r.config?.reasoningBudget ?? "—"}</td>
+                <td className="px-3 py-2 font-mono">{Math.round((r.config?.persistence ?? 0) * 100)}%</td>
+                <td className="px-3 py-2 font-mono">{r.worlds}</td>
+                <td className="px-3 py-2 font-mono text-primary">
+                  {r.worlds ? Math.round((r.emerged / r.worlds) * 100) : 0}%
+                  <span className="ml-1 text-muted-foreground">
+                    ({r.emerged}/{r.worlds})
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <Link
+                    to="/replay/$runId"
+                    params={{ runId: r.id }}
+                    className="font-mono uppercase tracking-widest text-primary hover:underline"
+                  >
+                    Replay
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  );
+}

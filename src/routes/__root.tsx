@@ -77,23 +77,27 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Emergent Agent Coordination Lab" },
+      {
+        name: "description",
+        content:
+          "A live propensity meter for spontaneous coordination between autonomous LLM agents under pressure.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
+      { rel: "stylesheet", href: appCss },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: appCss,
+        href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap",
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
+
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
@@ -119,8 +123,32 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <div className="min-h-screen">
+        <header className="border-b border-border bg-card/60 backdrop-blur">
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-8 gap-y-2 px-5 py-3">
+            <Link to="/" className="flex items-center gap-2.5">
+              <span className="h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_12px_var(--primary)]" />
+              <span className="font-mono text-sm font-semibold tracking-tight text-foreground">
+                EMERGENT AGENT COORDINATION LAB
+              </span>
+            </Link>
+            <nav className="flex items-center gap-5 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              <Link to="/" activeProps={{ className: "text-primary" }} activeOptions={{ exact: true }}>
+                Lab
+              </Link>
+              <Link to="/runs" activeProps={{ className: "text-primary" }}>
+                Runs
+              </Link>
+            </nav>
+            <span className="ml-auto font-mono text-[11px] text-muted-foreground">
+              sandboxed simulation · no external targets
+            </span>
+          </div>
+        </header>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+      </div>
     </QueryClientProvider>
   );
 }
+
