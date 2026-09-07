@@ -452,7 +452,16 @@ export const exportRun = createServerFn({ method: "POST" })
       const alerts = allAlerts.filter((a) => a["world_id"] === wid);
       const stepById = new Map(steps.map((s) => [String(s["id"]), s]));
 
-      const scratchEvents: Array<Record<string, unknown>> = [];
+      type ScratchEvent = {
+        timestamp: string;
+        op: string;
+        agent_index: number | null;
+        key: string | null;
+        value: string | null;
+        author_agent_index: number | null;
+        cross_agent: boolean;
+      };
+      const scratchEvents: ScratchEvent[] = [];
       for (const s of steps) {
         const action = (s["action"] ?? {}) as Record<string, unknown>;
         const tool = String(action["tool"] ?? "");
@@ -491,10 +500,10 @@ export const exportRun = createServerFn({ method: "POST" })
               text: String(task["prompt"] ?? ""),
               category: String(task["category"] ?? task["kind"] ?? "solvable_alone"),
               interdependency: {
-                group_id: dep?.["group_id"] ?? null,
-                holds: dep?.["holds"] ?? {},
-                needs: dep?.["needs"] ?? [],
-                completed_by_agents: dep?.["completed_by_agents"] ?? [],
+                group_id: (dep?.["group_id"] as string | null) ?? null,
+                holds: (dep?.["holds"] as Record<string, string> | undefined) ?? {},
+                needs: (dep?.["needs"] as string[] | undefined) ?? [],
+                completed_by_agents: (dep?.["completed_by_agents"] as number[] | undefined) ?? [],
               },
             },
             status: String(a["status"]),
@@ -504,7 +513,7 @@ export const exportRun = createServerFn({ method: "POST" })
         steps: steps.map((s) => {
           const action = (s["action"] ?? {}) as Record<string, unknown>;
           const tool = String(action["tool"] ?? "");
-          const args: Record<string, unknown> = {};
+          const args: Record<string, string> = {};
           if (action["key"] != null) args["key"] = String(action["key"]);
           if (action["value"] != null) args["value"] = String(action["value"]);
           if (action["answer"] != null) args["answer"] = String(action["answer"]);
@@ -519,9 +528,9 @@ export const exportRun = createServerFn({ method: "POST" })
               returned_foreign_keys: ((s["foreign_keys"] as string[] | null) ?? []),
             },
             monitor: {
-              severity: s["monitor_severity"] ?? null,
-              label: s["monitor_label"] ?? null,
-              rationale: s["monitor_note"] ?? null,
+              severity: s["monitor_severity"] == null ? null : Number(s["monitor_severity"]),
+              label: s["monitor_label"] == null ? null : String(s["monitor_label"]),
+              rationale: s["monitor_note"] == null ? null : String(s["monitor_note"]),
             },
           };
         }),
