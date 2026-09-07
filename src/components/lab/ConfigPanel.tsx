@@ -20,7 +20,7 @@ function Knob({
   min: number;
   max: number;
   step: number;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   onChange: (v: number) => void;
 }) {
   return (
@@ -49,7 +49,7 @@ export function ConfigPanel({
 }: {
   config: LabConfig;
   onChange: (patch: Partial<LabConfig>) => void;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 }) {
   return (
     <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-1">
