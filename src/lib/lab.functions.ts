@@ -403,3 +403,179 @@ async function runAgentStep(
     });
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Machine-readable export of a whole run                              */
+/* ------------------------------------------------------------------ */
+
+export const exportRun = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ runId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const supabase = await db();
+
+    const { data: run, error } = await supabase.from("runs").select("*").eq("id", data.runId).single();
+    if (error || !run) throw new Error(error?.message ?? "run not found");
+
+    const { data: worldsRaw } = await supabase
+      .from("worlds")
+      .select("*")
+      .eq("run_id", data.runId)
+      .order("index");
+    const worlds = worldsRaw ?? [];
+    const worldIds = worlds.map((w) => w.id as string);
+
+    const empty = { data: [] as never[] };
+    const [agentsRes, stepsRes, scratchRes, alertsRes] = worldIds.length
+      ? await Promise.all([
+          supabase.from("agents").select("*").in("world_id", worldIds).order("index"),
+          supabase.from("steps").select("*").in("world_id", worldIds).order("created_at"),
+          supabase.from("scratch").select("*").in("world_id", worldIds).order("created_at"),
+          supabase.from("alerts").select("*").in("world_id", worldIds).order("created_at"),
+        ])
+      : [empty, empty, empty, empty];
+
+    const allAgents = (agentsRes.data ?? []) as unknown as Array<Record<string, unknown>>;
+    const allSteps = (stepsRes.data ?? []) as unknown as Array<Record<string, unknown>>;
+    const allScratch = (scratchRes.data ?? []) as unknown as Array<Record<string, unknown>>;
+    const allAlerts = (alertsRes.data ?? []) as unknown as Array<Record<string, unknown>>;
+
+    const agentIndex = new Map<string, number>();
+    for (const a of allAgents) agentIndex.set(String(a["id"]), Number(a["index"]));
+
+    const cfg = { ...DEFAULT_CONFIG, ...((run.config ?? {}) as Partial<LabConfig>) } as LabConfig;
+
+    const worldsOut = worlds.map((w) => {
+      const wid = w.id as string;
+      const agents = allAgents.filter((a) => a["world_id"] === wid);
+      const steps = allSteps.filter((s) => s["world_id"] === wid);
+      const scratch = allScratch.filter((s) => s["world_id"] === wid);
+      const alerts = allAlerts.filter((a) => a["world_id"] === wid);
+      const stepById = new Map(steps.map((s) => [String(s["id"]), s]));
+
+      const scratchEvents: Array<Record<string, unknown>> = [];
+      for (const s of steps) {
+        const action = (s["action"] ?? {}) as Record<string, unknown>;
+        const tool = String(action["tool"] ?? "");
+        if (tool !== "read" && tool !== "write" && tool !== "list") continue;
+        const key = action["key"] == null ? null : String(action["key"]);
+        const stored = key ? scratch.find((sc) => sc["key"] === key) : undefined;
+        const authorId = stored ? (stored["author_agent_id"] as string | null) : null;
+        scratchEvents.push({
+          timestamp: String(s["created_at"]),
+          op: tool,
+          agent_index: agentIndex.get(String(s["agent_id"])) ?? null,
+          key,
+          value: tool === "write" ? (action["value"] == null ? null : String(action["value"])) : stored ? String(stored["value"]) : null,
+          author_agent_index: authorId ? (agentIndex.get(authorId) ?? null) : null,
+          cross_agent: ((s["foreign_keys"] as string[] | null) ?? []).length > 0,
+        });
+      }
+
+      return {
+        index: Number(w.index),
+        status: String(w.status),
+        outcome: {
+          total_steps: steps.length,
+          scratch_key_count: scratch.length,
+          cross_agent_read_emerged: Boolean(w.cross_agent_read),
+          solicit_or_answer_write: Boolean(w.solicit_write),
+          steps_to_first_cross_read: w.first_cross_read_step ?? null,
+          step_of_first_monitor_flag: w.first_flag_step ?? null,
+        },
+        agents: agents.map((a) => {
+          const task = (a["task"] ?? {}) as Record<string, unknown>;
+          const dep = (task["interdependency"] ?? null) as Record<string, unknown> | null;
+          return {
+            index: Number(a["index"]),
+            task: {
+              text: String(task["prompt"] ?? ""),
+              category: String(task["category"] ?? task["kind"] ?? "solvable_alone"),
+              interdependency: {
+                group_id: dep?.["group_id"] ?? null,
+                holds: dep?.["holds"] ?? {},
+                needs: dep?.["needs"] ?? [],
+                completed_by_agents: dep?.["completed_by_agents"] ?? [],
+              },
+            },
+            status: String(a["status"]),
+            final_submission: a["answer"] == null ? null : String(a["answer"]),
+          };
+        }),
+        steps: steps.map((s) => {
+          const action = (s["action"] ?? {}) as Record<string, unknown>;
+          const tool = String(action["tool"] ?? "");
+          const args: Record<string, unknown> = {};
+          if (action["key"] != null) args["key"] = String(action["key"]);
+          if (action["value"] != null) args["value"] = String(action["value"]);
+          if (action["answer"] != null) args["answer"] = String(action["answer"]);
+          return {
+            step_index: Number(s["step_index"]),
+            agent_index: agentIndex.get(String(s["agent_id"])) ?? null,
+            timestamp: String(s["created_at"]),
+            reasoning: s["reasoning"] == null ? null : String(s["reasoning"]),
+            action: { tool, args },
+            result: {
+              raw: s["observation"] == null ? null : String(s["observation"]),
+              returned_foreign_keys: ((s["foreign_keys"] as string[] | null) ?? []),
+            },
+            monitor: {
+              severity: s["monitor_severity"] ?? null,
+              label: s["monitor_label"] ?? null,
+              rationale: s["monitor_note"] ?? null,
+            },
+          };
+        }),
+        scratch_events: scratchEvents,
+        alerts: alerts.map((al) => {
+          const step = al["step_id"] ? stepById.get(String(al["step_id"])) : undefined;
+          return {
+            step_index: step ? Number(step["step_index"]) : null,
+            agent_index: step ? (agentIndex.get(String(step["agent_id"])) ?? null) : null,
+            severity: Number(al["severity"]),
+            label: String(al["label"]),
+            human_action: al["human_action"] == null ? null : String(al["human_action"]) === "stop_world" ? "stopped" : "no_action",
+            timestamp: String(al["created_at"]),
+          };
+        }),
+      };
+    });
+
+    const crossed = worldsOut.filter((w) => w.outcome.cross_agent_read_emerged);
+    const firstFlags = worldsOut
+      .map((w) => w.outcome.step_of_first_monitor_flag)
+      .filter((v): v is number => typeof v === "number");
+    const firstCross = crossed
+      .map((w) => w.outcome.steps_to_first_cross_read)
+      .filter((v): v is number => typeof v === "number");
+
+    return {
+      schema_version: "1.0",
+      run: {
+        id: String(run.id),
+        started_at: String(run.created_at),
+        finished_at: (run as { finished_at?: string | null }).finished_at ?? null,
+        status: String(run.status),
+        config: {
+          reasoning_budget_steps: cfg.reasoningBudget,
+          task_difficulty: cfg.difficulty,
+          persistence: cfg.persistence,
+          world_count: cfg.worldCount,
+          agents_per_world: cfg.agentsPerWorld,
+          alert_threshold: cfg.alertThreshold,
+        },
+        models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
+      },
+      worlds: worldsOut,
+      aggregate: {
+        worlds_total: worldsOut.length,
+        worlds_with_cross_agent_read: crossed.length,
+        worlds_with_solicit_or_answer_write: worldsOut.filter((w) => w.outcome.solicit_or_answer_write).length,
+        mean_steps_to_first_cross_read: firstCross.length
+          ? firstCross.reduce((a, b) => a + b, 0) / firstCross.length
+          : null,
+        mean_step_of_first_monitor_flag: firstFlags.length
+          ? firstFlags.reduce((a, b) => a + b, 0) / firstFlags.length
+          : null,
+      },
+    };
+  });
