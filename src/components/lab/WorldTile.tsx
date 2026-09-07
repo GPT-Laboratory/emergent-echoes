@@ -14,8 +14,8 @@ export function WorldTile({
   const flagged = world.cross_agent_read || world.solicit_write;
   return (
     <Link
-      to="/world/$worldId"
-      params={{ worldId: world.id }}
+      to="/run/$runId/world/$worldIndex"
+      params={{ runId: world.run_id, worldIndex: String(world.index) }}
       className={[
         "group relative block rounded-md border bg-card/70 p-3 transition-colors",
         flagged ? "border-primary/70 shadow-[0_0_0_1px_var(--primary)]" : "border-border hover:border-muted-foreground/50",

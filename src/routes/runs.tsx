@@ -1,5 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { downloadRunJson } from "@/lib/export-client";
+import { exportRun } from "@/lib/lab.functions";
 
 import { supabase } from "@/integrations/supabase/client";
 import type { LabConfig } from "@/lib/lab-types";
@@ -34,6 +39,18 @@ type Row = {
 
 function Runs() {
   const [rows, setRows] = useState<Row[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const doExport = useServerFn(exportRun);
+
+  const download = async (runId: string) => {
+    setBusy(runId);
+    try {
+      const doc = await doExport({ data: { runId } });
+      downloadRunJson(runId, doc);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -101,14 +118,32 @@ function Runs() {
                     ({r.emerged}/{r.worlds})
                   </span>
                 </td>
-                <td className="px-3 py-2 text-right">
-                  <Link
-                    to="/replay/$runId"
-                    params={{ runId: r.id }}
-                    className="font-mono uppercase tracking-widest text-primary hover:underline"
-                  >
-                    Replay
-                  </Link>
+                <td className="px-3 py-2">
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      to="/run/$runId"
+                      params={{ runId: r.id }}
+                      className="font-mono uppercase tracking-widest text-primary hover:underline"
+                    >
+                      Open
+                    </Link>
+                    <Link
+                      to="/replay/$runId"
+                      params={{ runId: r.id }}
+                      className="font-mono uppercase tracking-widest text-primary hover:underline"
+                    >
+                      Replay
+                    </Link>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy === r.id}
+                      onClick={() => void download(r.id)}
+                      className="font-mono text-[10px] uppercase tracking-widest"
+                    >
+                      {busy === r.id ? "Building…" : "Download JSON"}
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
