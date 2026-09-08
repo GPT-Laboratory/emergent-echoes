@@ -156,11 +156,11 @@ export function LabView({ runId }: { runId: string | null }) {
     void loadSweep();
   }, [loadSweep, runId, worlds.length, stats.crossRate]);
 
-  /* ---- START RUN is the only thing that ever begins execution ---- */
-  const start = async (taskMode: "assisted" | "emergent") => {
+  /* ---- RUN is the only thing that ever begins execution ---- */
+  const start = async () => {
     setError(null);
     try {
-      const res = await doCreate({ data: { config: { ...config, taskMode } } });
+      const res = await doCreate({ data: { config } });
       void startDriver(res.runId, (a) => doTick(a), (msg) => setError(msg));
       void navigate({ to: "/run/$runId", params: { runId: res.runId } });
     } catch (e) {
