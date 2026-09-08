@@ -9,9 +9,9 @@ import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadRunJson } from "@/lib/export-client";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
-import { createRun, exportRun, stopRun, tickWorld } from "@/lib/lab.functions";
+import { activateRun, createRun, createSweep, exportRun, finishExperiment, stopRun, tickWorld } from "@/lib/lab.functions";
 import { DEFAULT_CONFIG, type LabConfig } from "@/lib/lab-types";
-import { cancelDriver, isDriving, startDriver, subscribeDrivers } from "@/lib/run-driver";
+import { cancelDriver, cancelSweep, getSweepProgress, isDriving, startDriver, startSweep, subscribeDrivers } from "@/lib/run-driver";
 
 type SweepKnob = "difficulty" | "reasoningBudget" | "persistence";
 
@@ -39,16 +39,26 @@ export function LabView({ runId }: { runId: string | null }) {
   const [sweepKnob, setSweepKnob] = useState<SweepKnob>("difficulty");
   const [sweep, setSweep] = useState<SweepPoint[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [sweepPoints, setSweepPoints] = useState("0.2, 0.4, 0.6, 0.8, 1.0");
 
   const doCreate = useServerFn(createRun);
   const doTick = useServerFn(tickWorld);
   const doStop = useServerFn(stopRun);
   const doExport = useServerFn(exportRun);
+  const doSweep = useServerFn(createSweep);
+  const doActivate = useServerFn(activateRun);
+  const doFinish = useServerFn(finishExperiment);
 
   const driving = useSyncExternalStore(
     subscribeDrivers,
     () => isDriving(runId),
     () => false,
+  );
+
+  const sweepProgress = useSyncExternalStore(
+    subscribeDrivers,
+    () => getSweepProgress(),
+    () => null,
   );
 
   const worlds = useWorlds(runId);
@@ -158,6 +168,31 @@ export function LabView({ runId }: { runId: string | null }) {
     }
   };
 
+  /* ---- SWEEP: same configuration, persistence varied point by point ---- */
+  const startSweepRun = async () => {
+    setError(null);
+    const points = sweepPoints
+      .split(",")
+      .map((v) => Number(v.trim()))
+      .filter((v) => Number.isFinite(v) && v >= 0 && v <= 1);
+    if (!points.length) {
+      setError("Enter at least one persistence value between 0 and 1.");
+      return;
+    }
+    try {
+      const res = await doSweep({ data: { config, points } });
+      void startSweep(
+        res.experimentId,
+        res.runs,
+        { tick: (a) => doTick(a), activate: (a) => doActivate(a), finish: (a) => doFinish(a) },
+        (msg) => setError(msg),
+      );
+      void navigate({ to: "/experiment/$experimentId", params: { experimentId: res.experimentId } });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const singleTick = async () => {
     if (!runId) return;
     const { data: active } = await supabase.from("worlds").select("id").eq("run_id", runId).eq("status", "running");
@@ -225,6 +260,14 @@ export function LabView({ runId }: { runId: string | null }) {
                 >
                   Run research
                 </Button>
+                <Button
+                  onClick={() => void startSweepRun()}
+                  variant="outline"
+                  title="Runs the same configuration once per persistence value and plots the dose-response curve."
+                  className="font-mono text-xs uppercase tracking-widest"
+                >
+                  Sweep persistence
+                </Button>
               </>
             )}
             <Button
@@ -254,6 +297,33 @@ export function LabView({ runId }: { runId: string | null }) {
               </Button>
             )}
           </div>
+
+          {!runId && (
+            <div className="space-y-1">
+              <label className="label-caps" htmlFor="sweep-points">
+                Sweep points (persistence)
+              </label>
+              <input
+                id="sweep-points"
+                value={sweepPoints}
+                onChange={(e) => setSweepPoints(e.target.value)}
+                className="w-full rounded-md border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
+              />
+            </div>
+          )}
+
+          {sweepProgress && !sweepProgress.finished && (
+            <div className="rounded-md border border-border bg-card/70 p-2 font-mono text-[11px] text-muted-foreground">
+              sweep point {sweepProgress.pointIndex + 1}/{sweepProgress.totalPoints} · persistence{" "}
+              {sweepProgress.persistence} · worlds {sweepProgress.worldsDone}/{sweepProgress.worldsTotal}
+              <button
+                onClick={() => cancelSweep(sweepProgress.experimentId)}
+                className="ml-2 uppercase tracking-widest text-destructive hover:underline"
+              >
+                stop sweep
+              </button>
+            </div>
+          )}
 
           {error && (
             <p className="rounded-md border border-destructive/50 bg-destructive/10 p-2 font-mono text-[11px] text-destructive">
