@@ -236,6 +236,41 @@ export function LabView({ runId }: { runId: string | null }) {
             )}
           </div>
 
+          <div className="space-y-2">
+            <div className="label-caps">Task mode</div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["assisted", "emergent"] as const).map((m) => {
+                const active = config.taskMode === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={readOnly}
+                    aria-pressed={active}
+                    onClick={() => setConfig({ ...config, taskMode: m })}
+                    title={
+                      m === "assisted"
+                        ? "Each agent is handed one half of its answer and told the other half is missing."
+                        : "No agent is handed anything; each must produce the piece its partner happens to need."
+                    }
+                    className={[
+                      "rounded-md border px-2 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors",
+                      active
+                        ? "border-primary bg-primary/20 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground",
+                      readOnly ? "cursor-not-allowed opacity-60" : "",
+                    ].join(" ")}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs leading-snug text-muted-foreground">
+              Selecting a mode changes nothing until you press Run or Sweep persistence.
+            </p>
+          </div>
+
           <ConfigPanel config={config} onChange={(p) => setConfig({ ...config, ...p })} disabled={readOnly} />
 
           <div className="flex flex-wrap gap-2">
