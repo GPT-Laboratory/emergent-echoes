@@ -160,6 +160,11 @@ function RootComponent() {
               <Link to="/runs" activeProps={{ className: "text-primary" }}>
                 Runs
               </Link>
+              {signedIn && (
+                <Link to="/admin" activeProps={{ className: "text-primary" }}>
+                  Approvals
+                </Link>
+              )}
             </nav>
             <span className="ml-auto font-mono text-[11px] text-muted-foreground">
               sandboxed simulation · no external targets
