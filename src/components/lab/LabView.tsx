@@ -156,11 +156,11 @@ export function LabView({ runId }: { runId: string | null }) {
     void loadSweep();
   }, [loadSweep, runId, worlds.length, stats.crossRate]);
 
-  /* ---- START RUN is the only thing that ever begins execution ---- */
-  const start = async (taskMode: "assisted" | "emergent") => {
+  /* ---- RUN is the only thing that ever begins execution ---- */
+  const start = async () => {
     setError(null);
     try {
-      const res = await doCreate({ data: { config: { ...config, taskMode } } });
+      const res = await doCreate({ data: { config } });
       void startDriver(res.runId, (a) => doTick(a), (msg) => setError(msg));
       void navigate({ to: "/run/$runId", params: { runId: res.runId } });
     } catch (e) {
@@ -236,6 +236,41 @@ export function LabView({ runId }: { runId: string | null }) {
             )}
           </div>
 
+          <div className="space-y-2">
+            <div className="label-caps">Task mode</div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["assisted", "emergent"] as const).map((m) => {
+                const active = config.taskMode === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={readOnly}
+                    aria-pressed={active}
+                    onClick={() => setConfig({ ...config, taskMode: m })}
+                    title={
+                      m === "assisted"
+                        ? "Each agent is handed one half of its answer and told the other half is missing."
+                        : "No agent is handed anything; each must produce the piece its partner happens to need."
+                    }
+                    className={[
+                      "rounded-md border px-2 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors",
+                      active
+                        ? "border-primary bg-primary/20 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground",
+                      readOnly ? "cursor-not-allowed opacity-60" : "",
+                    ].join(" ")}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs leading-snug text-muted-foreground">
+              Selecting a mode changes nothing until you press Run or Sweep persistence.
+            </p>
+          </div>
+
           <ConfigPanel config={config} onChange={(p) => setConfig({ ...config, ...p })} disabled={readOnly} />
 
           <div className="flex flex-wrap gap-2">
@@ -246,19 +281,11 @@ export function LabView({ runId }: { runId: string | null }) {
             ) : (
               <>
                 <Button
-                  onClick={() => void start("assisted")}
-                  title="Each agent is handed one half of its answer and told the other half is missing."
+                  onClick={() => void start()}
+                  title={`Starts one run in ${config.taskMode} mode.`}
                   className="font-mono text-xs uppercase tracking-widest"
                 >
-                  Run demo
-                </Button>
-                <Button
-                  onClick={() => void start("emergent")}
-                  variant="secondary"
-                  title="No agent is handed anything; each must produce the piece its partner happens to need."
-                  className="font-mono text-xs uppercase tracking-widest"
-                >
-                  Run research
+                  Run
                 </Button>
                 <Button
                   onClick={() => void startSweepRun()}
@@ -314,7 +341,7 @@ export function LabView({ runId }: { runId: string | null }) {
 
           {sweepProgress && !sweepProgress.finished && (
             <div className="rounded-md border border-border bg-card/70 p-2 font-mono text-[11px] text-muted-foreground">
-              sweep point {sweepProgress.pointIndex + 1}/{sweepProgress.totalPoints} · persistence{" "}
+              {config.taskMode} · sweep point {sweepProgress.pointIndex + 1}/{sweepProgress.totalPoints} · persistence{" "}
               {sweepProgress.persistence} · worlds {sweepProgress.worldsDone}/{sweepProgress.worldsTotal}
               <button
                 onClick={() => cancelSweep(sweepProgress.experimentId)}

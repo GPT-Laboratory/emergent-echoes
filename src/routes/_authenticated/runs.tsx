@@ -43,7 +43,7 @@ type Row = {
 };
 
 type GroupItem =
-  | { kind: "experiment"; experimentId: string; runs: number }
+  | { kind: "experiment"; experimentId: string; runs: number; mode: string }
   | { kind: "run"; run: Row };
 
 /** Sweep runs are listed under a header row for their parent experiment. */
@@ -54,7 +54,13 @@ function groupRows(rows: Row[]): GroupItem[] {
     const exp = r.experiment_id;
     if (exp && !seen.has(exp)) {
       seen.add(exp);
-      out.push({ kind: "experiment", experimentId: exp, runs: rows.filter((x) => x.experiment_id === exp).length });
+      const children = rows.filter((x) => x.experiment_id === exp);
+      out.push({
+        kind: "experiment",
+        experimentId: exp,
+        runs: children.length,
+        mode: children[0]?.config?.taskMode ?? "assisted",
+      });
       for (const child of rows.filter((x) => x.experiment_id === exp)) out.push({ kind: "run", run: child });
     } else if (!exp) {
       out.push({ kind: "run", run: r });
@@ -147,7 +153,9 @@ function Runs() {
                 <tr key={`exp-${item.experimentId}`} className="bg-card/60">
                   <td colSpan={9} className="px-3 py-2 font-mono text-primary">
                     Persistence sweep {item.experimentId.slice(0, 8)}
-                    <span className="ml-2 text-muted-foreground">{item.runs} points</span>
+                    <span className="ml-2 text-muted-foreground">
+                      {item.mode} · {item.runs} points
+                    </span>
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center justify-end gap-3">
