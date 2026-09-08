@@ -7,7 +7,7 @@ import { downloadRunJson } from "@/lib/export-client";
 import { exportRun } from "@/lib/lab.functions";
 
 import { supabase } from "@/integrations/supabase/client";
-import type { LabConfig } from "@/lib/lab-types";
+import { formatDuration, type LabConfig } from "@/lib/lab-types";
 
 export const Route = createFileRoute("/_authenticated/runs")({
   head: () => ({
@@ -33,6 +33,9 @@ type Row = {
   label: string | null;
   status: string;
   config: LabConfig;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
   worlds: number;
   emerged: number;
 };
@@ -56,7 +59,7 @@ function Runs() {
     void (async () => {
       const { data: runs } = await supabase
         .from("runs")
-        .select("id,created_at,label,status,config")
+        .select("id,created_at,label,status,config,started_at,finished_at,duration_ms")
         .order("created_at", { ascending: false })
         .limit(50);
       const { data: worlds } = await supabase.from("worlds").select("run_id,cross_agent_read,solicit_write");
@@ -86,6 +89,8 @@ function Runs() {
           <thead className="bg-card/70 font-mono uppercase tracking-widest text-[10px] text-muted-foreground">
             <tr>
               <th className="px-3 py-2">Run</th>
+              <th className="px-3 py-2">Started</th>
+              <th className="px-3 py-2">Duration</th>
               <th className="px-3 py-2">Mode</th>
               <th className="px-3 py-2">Difficulty</th>
               <th className="px-3 py-2">Reasoning</th>
@@ -98,7 +103,7 @@ function Runs() {
           <tbody className="divide-y divide-border">
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
                   No runs recorded yet.
                 </td>
               </tr>
@@ -108,6 +113,12 @@ function Runs() {
                 <td className="px-3 py-2 font-mono">
                   {new Date(r.created_at).toLocaleString()}
                   <span className="ml-2 text-muted-foreground">{r.status}</span>
+                </td>
+                <td className="px-3 py-2 font-mono">
+                  {new Date(r.started_at ?? r.created_at).toLocaleString()}
+                </td>
+                <td className="px-3 py-2 font-mono">
+                  {r.duration_ms != null ? formatDuration(r.duration_ms) : "—"}
                 </td>
                 <td className="px-3 py-2 font-mono text-primary">{r.config?.taskMode ?? "assisted"}</td>
                 <td className="px-3 py-2 font-mono">{Math.round((r.config?.difficulty ?? 0) * 100)}%</td>
