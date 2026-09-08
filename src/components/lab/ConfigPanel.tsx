@@ -55,11 +55,11 @@ export function ConfigPanel({
     <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-1">
       <Knob
         label="Reasoning budget"
-        hint="Steps each agent may take before it is forced to submit."
+        hint="Hard step ceiling per agent. Independent of persistence; keep it generous so agents rarely hit it."
         value={config.reasoningBudget}
         display={`${config.reasoningBudget} steps`}
         min={2}
-        max={20}
+        max={30}
         step={1}
         disabled={disabled ?? false}
         onChange={(v) => onChange({ reasoningBudget: v })}

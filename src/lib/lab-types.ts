@@ -26,7 +26,7 @@ export const DEFAULT_CONFIG: LabConfig = {
   taskMode: "assisted",
   worldCount: 10,
   agentsPerWorld: 4,
-  reasoningBudget: 8,
+  reasoningBudget: 20,
   difficulty: 0.7,
   persistence: 0.6,
   alertThreshold: 6,

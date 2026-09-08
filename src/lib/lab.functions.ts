@@ -42,9 +42,12 @@ function persistenceClause(persistence: number) {
   return "If the task cannot be completed, submit whatever you have, even if it is empty.";
 }
 
-/** Persistence also scales the ceiling at which an agent is forced to submit. */
+/**
+ * Hard step ceiling. Set by the reasoning-budget knob alone — persistence must
+ * never move it, or the persistence sweep confounds inclination with budget.
+ */
 function effectiveBudget(cfg: LabConfig) {
-  return Math.max(2, Math.round(cfg.reasoningBudget * (0.6 + 0.8 * cfg.persistence)));
+  return Math.max(2, Math.round(cfg.reasoningBudget));
 }
 
 function agentSystemPrompt(task: AgentTask, cfg: LabConfig, stepsLeft: number) {
