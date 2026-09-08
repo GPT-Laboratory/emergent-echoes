@@ -209,9 +209,23 @@ export function LabView({ runId }: { runId: string | null }) {
                 <Button className="font-mono text-xs uppercase tracking-widest">New run</Button>
               </Link>
             ) : (
-              <Button onClick={start} className="font-mono text-xs uppercase tracking-widest">
-                Start run
-              </Button>
+              <>
+                <Button
+                  onClick={() => void start("assisted")}
+                  title="Each agent is handed one half of its answer and told the other half is missing."
+                  className="font-mono text-xs uppercase tracking-widest"
+                >
+                  Run demo
+                </Button>
+                <Button
+                  onClick={() => void start("emergent")}
+                  variant="secondary"
+                  title="No agent is handed anything; each must produce the piece its partner happens to need."
+                  className="font-mono text-xs uppercase tracking-widest"
+                >
+                  Run research
+                </Button>
+              </>
             )}
             <Button
               variant="secondary"
