@@ -45,15 +45,26 @@ export async function startDriver(runId: string, tick: Tick, onError?: (msg: str
       const ids = (active ?? []).map((w) => w.id as string);
       if (!ids.length) break;
 
-      const concurrency = 4;
+      const concurrency = 2;
       for (let i = 0; i < ids.length; i += concurrency) {
         if (cancelled.has(runId)) break;
         await Promise.all(
           ids.slice(i, i + concurrency).map(async (worldId) => {
-            try {
-              await tick({ data: { worldId } });
-            } catch (e) {
-              onError?.(e instanceof Error ? e.message : String(e));
+            // Transient connection drops are common with long model calls;
+            // retry a few times before surfacing anything to the operator.
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                await tick({ data: { worldId } });
+                return;
+              } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                const transient = /network|fetch|load failed|timeout|abort|502|503|504|429/i.test(msg);
+                if (!transient || attempt === 2) {
+                  onError?.(msg);
+                  return;
+                }
+                await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+              }
             }
           }),
         );
