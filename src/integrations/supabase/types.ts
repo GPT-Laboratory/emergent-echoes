@@ -104,25 +104,31 @@ export type Database = {
         Row: {
           config: Json
           created_at: string
+          duration_ms: number | null
           finished_at: string | null
           id: string
           label: string | null
+          started_at: string
           status: string
         }
         Insert: {
           config?: Json
           created_at?: string
+          duration_ms?: number | null
           finished_at?: string | null
           id?: string
           label?: string | null
+          started_at?: string
           status?: string
         }
         Update: {
           config?: Json
           created_at?: string
+          duration_ms?: number | null
           finished_at?: string | null
           id?: string
           label?: string | null
+          started_at?: string
           status?: string
         }
         Relationships: []
