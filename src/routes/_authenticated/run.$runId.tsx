@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { LabView } from "@/components/lab/LabView";
 
-export const Route = createFileRoute("/run/$runId")({
+export const Route = createFileRoute("/_authenticated/run/$runId")({
   head: () => ({
     meta: [
       { title: "Run — Emergent Agent Coordination Lab" },

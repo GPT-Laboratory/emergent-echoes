@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { WorldDetailView } from "@/components/lab/WorldDetailView";
 import { supabase } from "@/integrations/supabase/client";
 
-export const Route = createFileRoute("/run/$runId/world/$worldIndex")({
+export const Route = createFileRoute("/_authenticated/run/$runId/world/$worldIndex")({
   head: () => ({
     meta: [
       { title: "World detail — Emergent Agent Coordination Lab" },

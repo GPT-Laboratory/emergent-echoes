@@ -9,7 +9,7 @@ import { exportRun } from "@/lib/lab.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { LabConfig } from "@/lib/lab-types";
 
-export const Route = createFileRoute("/runs")({
+export const Route = createFileRoute("/_authenticated/runs")({
   head: () => ({
     meta: [
       { title: "Run archive — Emergent Agent Coordination Lab" },
