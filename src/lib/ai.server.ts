@@ -24,22 +24,41 @@ export async function chat(opts: {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
-  const res = await fetch(GATEWAY_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Lovable-API-Key": key,
-      "X-Lovable-AIG-SDK": "fetch",
-    },
-    body: JSON.stringify({
-      model: opts.model,
-      messages: [
-        { role: "system", content: opts.system },
-        { role: "user", content: opts.user },
-      ],
-      max_tokens: opts.maxTokens ?? 700,
-    }),
+  const body = JSON.stringify({
+    model: opts.model,
+    messages: [
+      { role: "system", content: opts.system },
+      { role: "user", content: opts.user },
+    ],
+    max_tokens: opts.maxTokens ?? 700,
   });
+
+  let res: Response | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await fetch(GATEWAY_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Lovable-API-Key": key,
+          "X-Lovable-AIG-SDK": "fetch",
+        },
+        body,
+        signal: AbortSignal.timeout(45_000),
+      });
+    } catch (e) {
+      lastErr = e;
+      res = null;
+    }
+    // Retry transient network failures and gateway congestion.
+    if (res && !(res.status === 429 || res.status >= 500)) break;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+  }
+
+  if (!res) {
+    throw new GatewayError(0, lastErr instanceof Error ? lastErr.message : "Network error contacting model");
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
