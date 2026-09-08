@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedRunsRouteImport } from './routes/_authenticated/runs'
 import { Route as AuthenticatedExperimentExperimentIdRouteImport } from './routes/_authenticated/experiment.$experimentId'
 import { Route as AuthenticatedReplayRunIdRouteImport } from './routes/_authenticated/replay.$runId'
@@ -30,6 +31,11 @@ const AuthRoute = AuthRouteImport.update({
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedRunsRoute = AuthenticatedRunsRouteImport.update({
@@ -64,6 +70,7 @@ const AuthenticatedRunRunIdWorldWorldIndexRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/runs': typeof AuthenticatedRunsRoute
   '/experiment/$experimentId': typeof AuthenticatedExperimentExperimentIdRoute
   '/replay/$runId': typeof AuthenticatedReplayRunIdRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
+  '/admin': typeof AuthenticatedAdminRoute
   '/runs': typeof AuthenticatedRunsRoute
   '/': typeof AuthenticatedIndexRoute
   '/experiment/$experimentId': typeof AuthenticatedExperimentExperimentIdRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/runs': typeof AuthenticatedRunsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/experiment/$experimentId': typeof AuthenticatedExperimentExperimentIdRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/admin'
     | '/runs'
     | '/experiment/$experimentId'
     | '/replay/$runId'
@@ -103,6 +113,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
+    | '/admin'
     | '/runs'
     | '/'
     | '/experiment/$experimentId'
@@ -113,6 +124,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/auth'
+    | '/_authenticated/admin'
     | '/_authenticated/runs'
     | '/_authenticated/'
     | '/_authenticated/experiment/$experimentId'
@@ -147,6 +159,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/runs': {
@@ -202,6 +221,7 @@ const AuthenticatedRunRunIdRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedRunsRoute: typeof AuthenticatedRunsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedExperimentExperimentIdRoute: typeof AuthenticatedExperimentExperimentIdRoute
@@ -210,6 +230,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedRunsRoute: AuthenticatedRunsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedExperimentExperimentIdRoute:
