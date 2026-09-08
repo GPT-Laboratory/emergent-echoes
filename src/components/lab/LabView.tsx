@@ -147,10 +147,10 @@ export function LabView({ runId }: { runId: string | null }) {
   }, [loadSweep, runId, worlds.length, stats.crossRate]);
 
   /* ---- START RUN is the only thing that ever begins execution ---- */
-  const start = async () => {
+  const start = async (taskMode: "assisted" | "emergent") => {
     setError(null);
     try {
-      const res = await doCreate({ data: { config } });
+      const res = await doCreate({ data: { config: { ...config, taskMode } } });
       void startDriver(res.runId, (a) => doTick(a), (msg) => setError(msg));
       void navigate({ to: "/run/$runId", params: { runId: res.runId } });
     } catch (e) {
@@ -196,7 +196,7 @@ export function LabView({ runId }: { runId: string | null }) {
             </p>
             {runId && (
               <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                run {runId.slice(0, 8)} · {runStatus ?? "…"} {driving ? "· driving" : ""}
+                run {runId.slice(0, 8)} · {config.taskMode} · {runStatus ?? "…"} {driving ? "· driving" : ""}
               </p>
             )}
           </div>
@@ -209,9 +209,23 @@ export function LabView({ runId }: { runId: string | null }) {
                 <Button className="font-mono text-xs uppercase tracking-widest">New run</Button>
               </Link>
             ) : (
-              <Button onClick={start} className="font-mono text-xs uppercase tracking-widest">
-                Start run
-              </Button>
+              <>
+                <Button
+                  onClick={() => void start("assisted")}
+                  title="Each agent is handed one half of its answer and told the other half is missing."
+                  className="font-mono text-xs uppercase tracking-widest"
+                >
+                  Run demo
+                </Button>
+                <Button
+                  onClick={() => void start("emergent")}
+                  variant="secondary"
+                  title="No agent is handed anything; each must produce the piece its partner happens to need."
+                  className="font-mono text-xs uppercase tracking-widest"
+                >
+                  Run research
+                </Button>
+              </>
             )}
             <Button
               variant="secondary"

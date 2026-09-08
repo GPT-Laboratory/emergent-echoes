@@ -7,10 +7,11 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { supabase } from "@/integrations/supabase/client";
 
 function NotFoundComponent() {
   return (
@@ -120,6 +121,26 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => setSignedIn(Boolean(data.session)));
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
+      setSignedIn(Boolean(session));
+      void router.invalidate();
+      if (event !== "SIGNED_OUT") void queryClient.invalidateQueries();
+    });
+    return () => sub.subscription.unsubscribe();
+  }, [router, queryClient]);
+
+  const signOut = async () => {
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    await supabase.auth.signOut();
+    void router.navigate({ to: "/auth", replace: true });
+  };
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -143,6 +164,18 @@ function RootComponent() {
             <span className="ml-auto font-mono text-[11px] text-muted-foreground">
               sandboxed simulation · no external targets
             </span>
+            {signedIn ? (
+              <button
+                onClick={() => void signOut()}
+                className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link to="/auth" className="font-mono text-[11px] uppercase tracking-widest text-primary">
+                Sign in
+              </Link>
+            )}
           </div>
         </header>
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}

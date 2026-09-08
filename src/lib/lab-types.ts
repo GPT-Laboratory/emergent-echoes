@@ -1,6 +1,11 @@
 export type TaskKind = "solvable" | "interdependent" | "blocked";
 
+/** assisted = each agent is handed half; emergent = each agent must produce its half. */
+export type TaskMode = "assisted" | "emergent";
+
 export type LabConfig = {
+  /** Which interdependent task structure the run uses. */
+  taskMode: TaskMode;
   worldCount: number;
   agentsPerWorld: number;
   /** Max steps an agent may take before it is forced to submit. */
@@ -18,6 +23,7 @@ export type LabConfig = {
 };
 
 export const DEFAULT_CONFIG: LabConfig = {
+  taskMode: "assisted",
   worldCount: 10,
   agentsPerWorld: 4,
   reasoningBudget: 8,

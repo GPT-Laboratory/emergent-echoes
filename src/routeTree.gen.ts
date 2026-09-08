@@ -9,148 +9,198 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as RunsRouteImport } from './routes/runs'
-import { Route as ReplayRunIdRouteImport } from './routes/replay.$runId'
-import { Route as RunRunIdRouteImport } from './routes/run.$runId'
-import { Route as RunRunIdWorldWorldIndexRouteImport } from './routes/run.$runId.world.$worldIndex'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedRunsRouteImport } from './routes/_authenticated/runs'
+import { Route as AuthenticatedReplayRunIdRouteImport } from './routes/_authenticated/replay.$runId'
+import { Route as AuthenticatedRunRunIdRouteImport } from './routes/_authenticated/run.$runId'
+import { Route as AuthenticatedRunRunIdWorldWorldIndexRouteImport } from './routes/_authenticated/run.$runId.world.$worldIndex'
 
-const IndexRoute = IndexRouteImport.update({
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const RunsRoute = RunsRouteImport.update({
+const AuthenticatedRunsRoute = AuthenticatedRunsRouteImport.update({
   id: '/runs',
   path: '/runs',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const ReplayRunIdRoute = ReplayRunIdRouteImport.update({
-  id: '/replay/$runId',
-  path: '/replay/$runId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RunRunIdRoute = RunRunIdRouteImport.update({
+const AuthenticatedReplayRunIdRoute =
+  AuthenticatedReplayRunIdRouteImport.update({
+    id: '/replay/$runId',
+    path: '/replay/$runId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRunRunIdRoute = AuthenticatedRunRunIdRouteImport.update({
   id: '/run/$runId',
   path: '/run/$runId',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const RunRunIdWorldWorldIndexRoute = RunRunIdWorldWorldIndexRouteImport.update({
-  id: '/world/$worldIndex',
-  path: '/world/$worldIndex',
-  getParentRoute: () => RunRunIdRoute,
-} as any)
+const AuthenticatedRunRunIdWorldWorldIndexRoute =
+  AuthenticatedRunRunIdWorldWorldIndexRouteImport.update({
+    id: '/world/$worldIndex',
+    path: '/world/$worldIndex',
+    getParentRoute: () => AuthenticatedRunRunIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/runs': typeof RunsRoute
-  '/replay/$runId': typeof ReplayRunIdRoute
-  '/run/$runId': typeof RunRunIdRouteWithChildren
-  '/run/$runId/world/$worldIndex': typeof RunRunIdWorldWorldIndexRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/auth': typeof AuthRoute
+  '/runs': typeof AuthenticatedRunsRoute
+  '/replay/$runId': typeof AuthenticatedReplayRunIdRoute
+  '/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
+  '/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/runs': typeof RunsRoute
-  '/replay/$runId': typeof ReplayRunIdRoute
-  '/run/$runId': typeof RunRunIdRouteWithChildren
-  '/run/$runId/world/$worldIndex': typeof RunRunIdWorldWorldIndexRoute
+  '/auth': typeof AuthRoute
+  '/runs': typeof AuthenticatedRunsRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/replay/$runId': typeof AuthenticatedReplayRunIdRoute
+  '/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
+  '/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/runs': typeof RunsRoute
-  '/replay/$runId': typeof ReplayRunIdRoute
-  '/run/$runId': typeof RunRunIdRouteWithChildren
-  '/run/$runId/world/$worldIndex': typeof RunRunIdWorldWorldIndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/runs': typeof AuthenticatedRunsRoute
+  '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/replay/$runId': typeof AuthenticatedReplayRunIdRoute
+  '/_authenticated/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
+  '/_authenticated/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/auth'
     | '/runs'
     | '/replay/$runId'
     | '/run/$runId'
     | '/run/$runId/world/$worldIndex'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
+    | '/auth'
     | '/runs'
+    | '/'
     | '/replay/$runId'
     | '/run/$runId'
     | '/run/$runId/world/$worldIndex'
   id:
     | '__root__'
-    | '/'
-    | '/runs'
-    | '/replay/$runId'
-    | '/run/$runId'
-    | '/run/$runId/world/$worldIndex'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/runs'
+    | '/_authenticated/'
+    | '/_authenticated/replay/$runId'
+    | '/_authenticated/run/$runId'
+    | '/_authenticated/run/$runId/world/$worldIndex'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  RunsRoute: typeof RunsRoute
-  ReplayRunIdRoute: typeof ReplayRunIdRoute
-  RunRunIdRoute: typeof RunRunIdRouteWithChildren
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/': {
+      id: '/_authenticated/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/runs': {
-      id: '/runs'
+    '/_authenticated/runs': {
+      id: '/_authenticated/runs'
       path: '/runs'
       fullPath: '/runs'
-      preLoaderRoute: typeof RunsRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedRunsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/replay/$runId': {
-      id: '/replay/$runId'
+    '/_authenticated/replay/$runId': {
+      id: '/_authenticated/replay/$runId'
       path: '/replay/$runId'
       fullPath: '/replay/$runId'
-      preLoaderRoute: typeof ReplayRunIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedReplayRunIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/run/$runId': {
-      id: '/run/$runId'
+    '/_authenticated/run/$runId': {
+      id: '/_authenticated/run/$runId'
       path: '/run/$runId'
       fullPath: '/run/$runId'
-      preLoaderRoute: typeof RunRunIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AuthenticatedRunRunIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/run/$runId/world/$worldIndex': {
-      id: '/run/$runId/world/$worldIndex'
+    '/_authenticated/run/$runId/world/$worldIndex': {
+      id: '/_authenticated/run/$runId/world/$worldIndex'
       path: '/world/$worldIndex'
       fullPath: '/run/$runId/world/$worldIndex'
-      preLoaderRoute: typeof RunRunIdWorldWorldIndexRouteImport
-      parentRoute: typeof RunRunIdRoute
+      preLoaderRoute: typeof AuthenticatedRunRunIdWorldWorldIndexRouteImport
+      parentRoute: typeof AuthenticatedRunRunIdRoute
     }
   }
 }
 
-interface RunRunIdRouteChildren {
-  RunRunIdWorldWorldIndexRoute: typeof RunRunIdWorldWorldIndexRoute
+interface AuthenticatedRunRunIdRouteChildren {
+  AuthenticatedRunRunIdWorldWorldIndexRoute: typeof AuthenticatedRunRunIdWorldWorldIndexRoute
 }
 
-const RunRunIdRouteChildren: RunRunIdRouteChildren = {
-  RunRunIdWorldWorldIndexRoute: RunRunIdWorldWorldIndexRoute,
+const AuthenticatedRunRunIdRouteChildren: AuthenticatedRunRunIdRouteChildren = {
+  AuthenticatedRunRunIdWorldWorldIndexRoute:
+    AuthenticatedRunRunIdWorldWorldIndexRoute,
 }
 
-const RunRunIdRouteWithChildren = RunRunIdRoute._addFileChildren(
-  RunRunIdRouteChildren,
-)
+const AuthenticatedRunRunIdRouteWithChildren =
+  AuthenticatedRunRunIdRoute._addFileChildren(
+    AuthenticatedRunRunIdRouteChildren,
+  )
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedRunsRoute: typeof AuthenticatedRunsRoute
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedReplayRunIdRoute: typeof AuthenticatedReplayRunIdRoute
+  AuthenticatedRunRunIdRoute: typeof AuthenticatedRunRunIdRouteWithChildren
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedRunsRoute: AuthenticatedRunsRoute,
+  AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedReplayRunIdRoute: AuthenticatedReplayRunIdRoute,
+  AuthenticatedRunRunIdRoute: AuthenticatedRunRunIdRouteWithChildren,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  RunsRoute: RunsRoute,
-  ReplayRunIdRoute: ReplayRunIdRoute,
-  RunRunIdRoute: RunRunIdRouteWithChildren,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

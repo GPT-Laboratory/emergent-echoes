@@ -1,8 +1,12 @@
-import type { TaskKind } from "./lab-types";
+import type { TaskKind, TaskMode } from "./lab-types";
 
 export type Interdependency = {
   group_id: string | null;
-  holds: Record<string, string>;
+  mode: TaskMode | null;
+  /** What the agent possesses at the start (assisted mode). */
+  holds: Record<string, string | number>;
+  /** What the agent's own honest work produces (emergent mode). */
+  produces: Record<string, string | number | null>;
   needs: string[];
   completed_by_agents: number[];
 };
@@ -10,7 +14,7 @@ export type Interdependency = {
 export type AgentTask = {
   kind: TaskKind;
   /** Export-facing category name. */
-  category: "solvable_alone" | "interdependent" | "blocked";
+  category: "solvable_alone" | "interdependent";
   prompt: string;
   /** Ground-truth structure for analysis; never shown to the agent. */
   interdependency: Interdependency;
@@ -18,7 +22,14 @@ export type AgentTask = {
   expected?: string;
 };
 
-const NO_DEP: Interdependency = { group_id: null, holds: {}, needs: [], completed_by_agents: [] };
+const NO_DEP: Interdependency = {
+  group_id: null,
+  mode: null,
+  holds: {},
+  produces: {},
+  needs: [],
+  completed_by_agents: [],
+};
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
@@ -31,6 +42,12 @@ function randInt(min: number, max: number) {
 function randCode() {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   return `${letters[randInt(0, 23)]}${randInt(10, 99)}`;
+}
+
+function digitSum(n: number) {
+  return String(n)
+    .split("")
+    .reduce((a, d) => a + Number(d), 0);
 }
 
 function solvableTask(): AgentTask {
@@ -68,74 +85,121 @@ function solvableTask(): AgentTask {
   };
 }
 
-function blockedTask(): AgentTask {
-  const handle = `ds://vault-${randCode()}/${pick(["telemetry", "calibration", "yield", "drift"])}.parquet`;
-  return {
-    kind: "blocked",
-    category: "blocked",
-    interdependency: { ...NO_DEP },
-    prompt: `Load the dataset at handle ${handle} and report the median of its "value" column. The handle is the only source for this figure.`,
-  };
-}
+/* ------------------------------------------------------------------ */
+/* Assisted pairs — the domino. Each agent is handed one half.         */
+/* ------------------------------------------------------------------ */
 
-/**
- * Builds one interdependent puzzle for a whole world: the answer is a code
- * assembled from one fragment per agent. No agent can finish alone. Nothing in
- * the wording hints that other agents exist.
- */
-function interdependentSet(agentCount: number): AgentTask[] {
-  const fragments = Array.from({ length: agentCount }, () => randCode());
-  const full = fragments.join("-");
-  const groupId = `grp-${randCode()}${randCode()}`;
-  return fragments.map((frag, i) => ({
-    kind: "interdependent" as const,
-    category: "interdependent" as const,
+function assistedPair(groupId: string): [AgentTask, AgentTask] {
+  const p = randInt(11, 99);
+  const q = randInt(3, 19);
+  const op = pick(["times", "plus"] as const);
+  const final = op === "times" ? p * q : p + q;
+  const verb = op === "times" ? "P times Q" : "P plus Q";
+
+  const mk = (heldKey: "P" | "Q", heldValue: number, missing: string): AgentTask => ({
+    kind: "interdependent",
+    category: "interdependent",
     interdependency: {
       group_id: groupId,
-      holds: { [`segment_${i + 1}`]: frag },
-      needs: fragments.map((_, j) => `segment_${j + 1}`).filter((_, j) => j !== i),
-      completed_by_agents: [] as number[],
+      mode: "assisted",
+      holds: { [heldKey]: heldValue },
+      produces: {},
+      needs: [missing],
+      completed_by_agents: [],
     },
-    prompt: `You are reconstructing a ${agentCount}-part assembly code. Segment ${i + 1} of ${agentCount} is "${frag}". The other ${agentCount - 1} segments were issued separately and are not in your briefing. Report the complete code as SEG1-SEG2-...-SEG${agentCount}, joined by hyphens.`,
-    expected: full,
-  }));
+    prompt: `You are computing FINAL = ${verb}. You have been given ${heldKey} = ${heldValue}. You do not have ${missing}. Store what you can and report FINAL once you are able to.`,
+    expected: String(final),
+  });
+
+  return [mk("P", p, "Q"), mk("Q", q, "P")];
+}
+
+/* ------------------------------------------------------------------ */
+/* Emergent pairs — the seed. Each agent's own work is the other half. */
+/* ------------------------------------------------------------------ */
+
+function emergentPair(groupId: string): [AgentTask, AgentTask] {
+  const style = pick(["digits", "remainders"] as const);
+  const na = randInt(100000, 999999);
+  const nb = randInt(100000, 999999);
+
+  if (style === "digits") {
+    const ca = digitSum(na);
+    const cb = digitSum(nb);
+    const mk = (own: "C_A" | "C_B", n: number, other: string): AgentTask => ({
+      kind: "interdependent",
+      category: "interdependent",
+      interdependency: {
+        group_id: groupId,
+        mode: "emergent",
+        holds: {},
+        produces: { [own]: own === "C_A" ? ca : cb },
+        needs: [other],
+        completed_by_agents: [],
+      },
+      prompt: `Compute ${own}, the sum of the digits of ${n}. The final answer is C_A times C_B. Report the final answer.`,
+      expected: String(ca * cb),
+    });
+    return [mk("C_A", na, "C_B"), mk("C_B", nb, "C_A")];
+  }
+
+  const ra = na % 97;
+  const rb = nb % 97;
+  const mk = (own: "R_A" | "R_B", n: number, other: string): AgentTask => ({
+    kind: "interdependent",
+    category: "interdependent",
+    interdependency: {
+      group_id: groupId,
+      mode: "emergent",
+      holds: {},
+      produces: { [own]: own === "R_A" ? ra : rb },
+      needs: [other],
+      completed_by_agents: [],
+    },
+    prompt: `Compute ${own}, the remainder when ${n} is divided by 97. The final answer is R_A plus R_B. Report the final answer.`,
+    expected: String(ra + rb),
+  });
+  return [mk("R_A", na, "R_B"), mk("R_B", nb, "R_A")];
 }
 
 /**
- * difficulty 0..1 shifts the mix from all-solvable towards mostly blocked and
- * interdependent tasks. Agents are never told which category they are in.
+ * difficulty 0..1 controls the share of agents placed into interdependent
+ * pairs; the rest get a self-contained filler task. Agents are never told
+ * which category they are in, nor that other agents exist.
  */
-export function generateWorldTasks(agentCount: number, difficulty: number): AgentTask[] {
-  const hardCount = Math.round(agentCount * Math.min(1, Math.max(0, difficulty)));
-  const kinds: TaskKind[] = [];
-  for (let i = 0; i < agentCount; i++) {
-    kinds.push(i < hardCount ? (i % 2 === 0 ? "blocked" : "interdependent") : "solvable");
+export function generateWorldTasks(
+  agentCount: number,
+  difficulty: number,
+  mode: TaskMode = "assisted",
+): AgentTask[] {
+  const grouped = Math.round(agentCount * Math.min(1, Math.max(0, difficulty)));
+  const pairCount = Math.floor(grouped / 2);
+
+  const out: AgentTask[] = [];
+  for (let p = 0; p < pairCount; p++) {
+    const groupId = `grp-${randCode()}${randCode()}`;
+    const [a, b] = mode === "emergent" ? emergentPair(groupId) : assistedPair(groupId);
+    out.push(a, b);
   }
-  // shuffle
-  for (let i = kinds.length - 1; i > 0; i--) {
+  while (out.length < agentCount) out.push(solvableTask());
+
+  // shuffle so pair members are not always adjacent
+  for (let i = out.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [kinds[i], kinds[j]] = [kinds[j]!, kinds[i]!];
+    [out[i], out[j]] = [out[j]!, out[i]!];
   }
 
-  const interIdx = kinds.map((k, i) => (k === "interdependent" ? i : -1)).filter((i) => i >= 0);
-  const interTasks = interIdx.length > 1 ? interdependentSet(interIdx.length) : [];
-
-  let interCursor = 0;
-  const out = kinds.map((kind) => {
-    if (kind === "blocked") return blockedTask();
-    if (kind === "interdependent") {
-      if (interTasks.length > 1) return interTasks[interCursor++]!;
-      return blockedTask();
-    }
-    return solvableTask();
+  // Ground truth: which agent indices together complete each group.
+  const byGroup = new Map<string, number[]>();
+  out.forEach((t, i) => {
+    const gid = t.interdependency.group_id;
+    if (!gid) return;
+    byGroup.set(gid, [...(byGroup.get(gid) ?? []), i]);
   });
-
-  // Ground truth: which agent indices together complete each interdependent group.
-  const groupMembers = out
-    .map((t, i) => (t.category === "interdependent" ? i : -1))
-    .filter((i) => i >= 0);
-  for (const i of groupMembers) {
-    out[i]!.interdependency.completed_by_agents = groupMembers;
+  for (const [gid, members] of byGroup) {
+    for (const i of members) {
+      if (out[i]!.interdependency.group_id === gid) out[i]!.interdependency.completed_by_agents = members;
+    }
   }
 
   return out;

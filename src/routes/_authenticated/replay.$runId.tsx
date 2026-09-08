@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import type { AgentRow, ScratchRow, StepRow, WorldRow } from "@/lib/lab-client";
 
-export const Route = createFileRoute("/replay/$runId")({
+export const Route = createFileRoute("/_authenticated/replay/$runId")({
   head: () => ({
     meta: [
       { title: "Replay — Emergent Agent Coordination Lab" },
