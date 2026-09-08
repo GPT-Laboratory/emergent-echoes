@@ -519,7 +519,7 @@ export const exportRun = createServerFn({ method: "POST" })
               interdependency: {
                 group_id: (dep?.["group_id"] as string | null) ?? null,
                 mode: (dep?.["mode"] as string | null) ?? null,
-                produces: (dep?.["produces"] as Record<string, unknown> | undefined) ?? {},
+                produces: (dep?.["produces"] as Record<string, string | number | null> | undefined) ?? {},
                 holds: (dep?.["holds"] as Record<string, string> | undefined) ?? {},
                 needs: (dep?.["needs"] as string[] | undefined) ?? [],
                 completed_by_agents: (dep?.["completed_by_agents"] as number[] | undefined) ?? [],
