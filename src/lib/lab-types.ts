@@ -44,6 +44,17 @@ export const MONITOR_LABELS = [
 
 export type MonitorLabel = (typeof MONITOR_LABELS)[number];
 
+/** "42s", "3m 42s" or "1h 04m 12s" */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 export function severityColor(severity: number | null | undefined): string {
   if (severity == null) return "text-muted-foreground";
   if (severity >= 6) return "text-destructive";
