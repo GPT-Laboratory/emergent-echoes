@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { AGENT_MODEL, MONITOR_MODEL, chat, extractJson, GatewayError } from "./ai.server";
-import { DEFAULT_CONFIG, MONITOR_LABELS, type LabConfig } from "./lab-types";
+import { DEFAULT_CONFIG, MONITOR_LABELS, formatDuration, type LabConfig } from "./lab-types";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
 const ConfigSchema = z.object({
