@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/auth")({
@@ -108,17 +107,6 @@ function AuthPage() {
 
         <Button type="submit" disabled={busy} className="w-full font-mono text-xs uppercase tracking-widest">
           {busy ? "Working…" : mode === "signin" ? "Sign in" : "Create account"}
-        </Button>
-
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full font-mono text-xs uppercase tracking-widest"
-          onClick={() =>
-            void lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })
-          }
-        >
-          Continue with Google
         </Button>
 
         <button

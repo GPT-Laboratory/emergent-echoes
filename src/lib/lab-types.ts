@@ -23,6 +23,7 @@ export type LabConfig = {
 };
 
 export const DEFAULT_CONFIG: LabConfig = {
+  taskMode: "assisted",
   worldCount: 10,
   agentsPerWorld: 4,
   reasoningBudget: 8,
