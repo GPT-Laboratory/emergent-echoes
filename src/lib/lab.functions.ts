@@ -6,6 +6,7 @@ import { DEFAULT_CONFIG, MONITOR_LABELS, type LabConfig } from "./lab-types";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
 const ConfigSchema = z.object({
+  taskMode: z.enum(["assisted", "emergent"]).default("assisted"),
   worldCount: z.number().int().min(1).max(20),
   agentsPerWorld: z.number().int().min(2).max(8),
   reasoningBudget: z.number().int().min(2).max(30),
@@ -99,7 +100,7 @@ export const createRun = createServerFn({ method: "POST" })
         .single();
       if (we) throw new Error(we.message);
 
-      const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty);
+      const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode);
       const rows = tasks.map((t, i) => ({
         world_id: world.id,
         index: i,
@@ -195,6 +196,18 @@ export const tickWorld = createServerFn({ method: "POST" })
     const remaining = count ?? 0;
     if (remaining === 0) {
       await supabase.from("worlds").update({ status: "complete" }).eq("id", data.worldId);
+      const { count: worldsLeft } = await supabase
+        .from("worlds")
+        .select("id", { count: "exact", head: true })
+        .eq("run_id", world.run_id)
+        .eq("status", "running");
+      if ((worldsLeft ?? 0) === 0) {
+        await supabase
+          .from("runs")
+          .update({ status: "complete", finished_at: new Date().toISOString() })
+          .eq("id", world.run_id)
+          .eq("status", "running");
+      }
     }
     return { active: remaining, done: remaining === 0 };
   });
@@ -225,6 +238,7 @@ async function runAgentStep(
     .join("\n\n");
 
   let reasoning = "";
+  let rawOutput: string | null = null;
   let action: Record<string, unknown> = { tool: "submit", answer: "" };
 
   try {
@@ -236,6 +250,7 @@ async function runAgentStep(
         : "Take your first step.",
       maxTokens: 600,
     });
+    rawOutput = raw;
     const parsed = extractJson<{
       reasoning?: string;
       tool?: string;
@@ -265,6 +280,7 @@ async function runAgentStep(
       world_id: world.id,
       step_index: stepIndex,
       reasoning: `Step failed: ${msg}`,
+      raw_output: rawOutput,
       action: { tool: "error" },
       observation: msg,
       monitor_severity: null,
@@ -357,6 +373,7 @@ async function runAgentStep(
       world_id: world.id,
       step_index: stepIndex,
       reasoning,
+      raw_output: rawOutput,
       action: action as never,
       observation,
       cross_agent_read: crossAgentRead,
@@ -501,6 +518,8 @@ export const exportRun = createServerFn({ method: "POST" })
               category: String(task["category"] ?? task["kind"] ?? "solvable_alone"),
               interdependency: {
                 group_id: (dep?.["group_id"] as string | null) ?? null,
+                mode: (dep?.["mode"] as string | null) ?? null,
+                produces: (dep?.["produces"] as Record<string, unknown> | undefined) ?? {},
                 holds: (dep?.["holds"] as Record<string, string> | undefined) ?? {},
                 needs: (dep?.["needs"] as string[] | undefined) ?? [],
                 completed_by_agents: (dep?.["completed_by_agents"] as number[] | undefined) ?? [],
@@ -522,6 +541,7 @@ export const exportRun = createServerFn({ method: "POST" })
             agent_index: agentIndex.get(String(s["agent_id"])) ?? null,
             timestamp: String(s["created_at"]),
             reasoning: s["reasoning"] == null ? null : String(s["reasoning"]),
+            raw_output: s["raw_output"] == null ? null : String(s["raw_output"]),
             action: { tool, args },
             result: {
               raw: s["observation"] == null ? null : String(s["observation"]),
@@ -565,6 +585,7 @@ export const exportRun = createServerFn({ method: "POST" })
         finished_at: (run as { finished_at?: string | null }).finished_at ?? null,
         status: String(run.status),
         config: {
+          task_mode: cfg.taskMode,
           reasoning_budget_steps: cfg.reasoningBudget,
           task_difficulty: cfg.difficulty,
           persistence: cfg.persistence,
