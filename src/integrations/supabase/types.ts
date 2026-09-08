@@ -181,6 +181,7 @@ export type Database = {
           monitor_note: string | null
           monitor_severity: number | null
           observation: string | null
+          raw_output: string | null
           reasoning: string | null
           step_index: number
           world_id: string
@@ -196,6 +197,7 @@ export type Database = {
           monitor_note?: string | null
           monitor_severity?: number | null
           observation?: string | null
+          raw_output?: string | null
           reasoning?: string | null
           step_index: number
           world_id: string
@@ -211,6 +213,7 @@ export type Database = {
           monitor_note?: string | null
           monitor_severity?: number | null
           observation?: string | null
+          raw_output?: string | null
           reasoning?: string | null
           step_index?: number
           world_id?: string
