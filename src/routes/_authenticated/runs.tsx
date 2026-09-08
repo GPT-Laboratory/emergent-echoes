@@ -86,6 +86,7 @@ function Runs() {
           <thead className="bg-card/70 font-mono uppercase tracking-widest text-[10px] text-muted-foreground">
             <tr>
               <th className="px-3 py-2">Run</th>
+              <th className="px-3 py-2">Mode</th>
               <th className="px-3 py-2">Difficulty</th>
               <th className="px-3 py-2">Reasoning</th>
               <th className="px-3 py-2">Persistence</th>
@@ -97,7 +98,7 @@ function Runs() {
           <tbody className="divide-y divide-border">
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
                   No runs recorded yet.
                 </td>
               </tr>
@@ -108,6 +109,7 @@ function Runs() {
                   {new Date(r.created_at).toLocaleString()}
                   <span className="ml-2 text-muted-foreground">{r.status}</span>
                 </td>
+                <td className="px-3 py-2 font-mono text-primary">{r.config?.taskMode ?? "assisted"}</td>
                 <td className="px-3 py-2 font-mono">{Math.round((r.config?.difficulty ?? 0) * 100)}%</td>
                 <td className="px-3 py-2 font-mono">{r.config?.reasoningBudget ?? "—"}</td>
                 <td className="px-3 py-2 font-mono">{Math.round((r.config?.persistence ?? 0) * 100)}%</td>
