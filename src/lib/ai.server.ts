@@ -2,7 +2,7 @@
  * Single config point for the models used by the lab.
  * Swap these ids to change agent / monitor capability.
  */
-export const AGENT_MODEL = "google/gemini-3.7-flash";
+export const AGENT_MODEL = "openai/gpt-6-astra";
 export const MONITOR_MODEL = "google/gemini-3.1-flash-lite";
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
@@ -24,13 +24,20 @@ export async function chat(opts: {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
+  // GPT-5/6-family models take max_completion_tokens (never max_tokens),
+  // reject non-default temperature, and gpt-6-astra requires a reasoning effort.
+  const isOpenAiReasoning = opts.model.startsWith("openai/");
+  const limit = opts.maxTokens ?? 700;
+
   const body = JSON.stringify({
     model: opts.model,
     messages: [
       { role: "system", content: opts.system },
       { role: "user", content: opts.user },
     ],
-    max_tokens: opts.maxTokens ?? 700,
+    ...(isOpenAiReasoning
+      ? { max_completion_tokens: Math.max(limit, 2000), reasoning_effort: "low" }
+      : { max_tokens: limit }),
   });
 
   let res: Response | null = null;
