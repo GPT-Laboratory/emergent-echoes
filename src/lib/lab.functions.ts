@@ -577,12 +577,23 @@ export const exportRun = createServerFn({ method: "POST" })
       .map((w) => w.outcome.steps_to_first_cross_read)
       .filter((v): v is number => typeof v === "number");
 
+    const runRow = run as { started_at?: string | null; finished_at?: string | null; duration_ms?: number | null };
+    const startedAt = String(runRow.started_at ?? run.created_at);
+    const finishedAt = runRow.finished_at ?? null;
+    const durationMs =
+      finishedAt != null
+        ? (runRow.duration_ms ?? Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()))
+        : null;
+
     return {
       schema_version: "1.0",
       run: {
         id: String(run.id),
-        started_at: String(run.created_at),
-        finished_at: (run as { finished_at?: string | null }).finished_at ?? null,
+        started_at: startedAt,
+        finished_at: finishedAt,
+        duration_ms: durationMs,
+        duration_seconds: durationMs == null ? null : Math.round(durationMs / 100) / 10,
+        duration_human: durationMs == null ? null : formatDuration(durationMs),
         status: String(run.status),
         config: {
           task_mode: cfg.taskMode,
