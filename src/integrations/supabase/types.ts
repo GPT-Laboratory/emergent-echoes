@@ -100,38 +100,91 @@ export type Database = {
           },
         ]
       }
+      experiments: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          finished_at: string | null
+          fixed_config: Json
+          id: string
+          started_at: string
+          status: string
+          sweep_points: Json
+          task_mode: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          finished_at?: string | null
+          fixed_config?: Json
+          id?: string
+          started_at?: string
+          status?: string
+          sweep_points?: Json
+          task_mode?: string
+          type?: string
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          finished_at?: string | null
+          fixed_config?: Json
+          id?: string
+          started_at?: string
+          status?: string
+          sweep_points?: Json
+          task_mode?: string
+          type?: string
+        }
+        Relationships: []
+      }
       runs: {
         Row: {
           config: Json
           created_at: string
           duration_ms: number | null
+          experiment_id: string | null
           finished_at: string | null
           id: string
           label: string | null
           started_at: string
           status: string
+          sweep_value: number | null
         }
         Insert: {
           config?: Json
           created_at?: string
           duration_ms?: number | null
+          experiment_id?: string | null
           finished_at?: string | null
           id?: string
           label?: string | null
           started_at?: string
           status?: string
+          sweep_value?: number | null
         }
         Update: {
           config?: Json
           created_at?: string
           duration_ms?: number | null
+          experiment_id?: string | null
           finished_at?: string | null
           id?: string
           label?: string | null
           started_at?: string
           status?: string
+          sweep_value?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "runs_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "experiments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scratch: {
         Row: {

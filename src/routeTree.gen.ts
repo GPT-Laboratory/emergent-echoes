@@ -13,6 +13,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedRunsRouteImport } from './routes/_authenticated/runs'
+import { Route as AuthenticatedExperimentExperimentIdRouteImport } from './routes/_authenticated/experiment.$experimentId'
 import { Route as AuthenticatedReplayRunIdRouteImport } from './routes/_authenticated/replay.$runId'
 import { Route as AuthenticatedRunRunIdRouteImport } from './routes/_authenticated/run.$runId'
 import { Route as AuthenticatedRunRunIdWorldWorldIndexRouteImport } from './routes/_authenticated/run.$runId.world.$worldIndex'
@@ -36,6 +37,12 @@ const AuthenticatedRunsRoute = AuthenticatedRunsRouteImport.update({
   path: '/runs',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedExperimentExperimentIdRoute =
+  AuthenticatedExperimentExperimentIdRouteImport.update({
+    id: '/experiment/$experimentId',
+    path: '/experiment/$experimentId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedReplayRunIdRoute =
   AuthenticatedReplayRunIdRouteImport.update({
     id: '/replay/$runId',
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
   '/runs': typeof AuthenticatedRunsRoute
+  '/experiment/$experimentId': typeof AuthenticatedExperimentExperimentIdRoute
   '/replay/$runId': typeof AuthenticatedReplayRunIdRoute
   '/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
   '/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/runs': typeof AuthenticatedRunsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/experiment/$experimentId': typeof AuthenticatedExperimentExperimentIdRoute
   '/replay/$runId': typeof AuthenticatedReplayRunIdRoute
   '/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
   '/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
@@ -76,6 +85,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/runs': typeof AuthenticatedRunsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/experiment/$experimentId': typeof AuthenticatedExperimentExperimentIdRoute
   '/_authenticated/replay/$runId': typeof AuthenticatedReplayRunIdRoute
   '/_authenticated/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
   '/_authenticated/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/runs'
+    | '/experiment/$experimentId'
     | '/replay/$runId'
     | '/run/$runId'
     | '/run/$runId/world/$worldIndex'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/runs'
     | '/'
+    | '/experiment/$experimentId'
     | '/replay/$runId'
     | '/run/$runId'
     | '/run/$runId/world/$worldIndex'
@@ -103,6 +115,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/runs'
     | '/_authenticated/'
+    | '/_authenticated/experiment/$experimentId'
     | '/_authenticated/replay/$runId'
     | '/_authenticated/run/$runId'
     | '/_authenticated/run/$runId/world/$worldIndex'
@@ -141,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/runs'
       fullPath: '/runs'
       preLoaderRoute: typeof AuthenticatedRunsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/experiment/$experimentId': {
+      id: '/_authenticated/experiment/$experimentId'
+      path: '/experiment/$experimentId'
+      fullPath: '/experiment/$experimentId'
+      preLoaderRoute: typeof AuthenticatedExperimentExperimentIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/replay/$runId': {
@@ -184,6 +204,7 @@ const AuthenticatedRunRunIdRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedRunsRoute: typeof AuthenticatedRunsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedExperimentExperimentIdRoute: typeof AuthenticatedExperimentExperimentIdRoute
   AuthenticatedReplayRunIdRoute: typeof AuthenticatedReplayRunIdRoute
   AuthenticatedRunRunIdRoute: typeof AuthenticatedRunRunIdRouteWithChildren
 }
@@ -191,6 +212,8 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRunsRoute: AuthenticatedRunsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedExperimentExperimentIdRoute:
+    AuthenticatedExperimentExperimentIdRoute,
   AuthenticatedReplayRunIdRoute: AuthenticatedReplayRunIdRoute,
   AuthenticatedRunRunIdRoute: AuthenticatedRunRunIdRouteWithChildren,
 }

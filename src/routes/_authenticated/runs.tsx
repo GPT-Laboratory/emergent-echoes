@@ -3,8 +3,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { downloadRunJson } from "@/lib/export-client";
-import { exportRun } from "@/lib/lab.functions";
+import { downloadRunJson, downloadSweepJson } from "@/lib/export-client";
+import { exportExperiment, exportRun } from "@/lib/lab.functions";
 
 import { supabase } from "@/integrations/supabase/client";
 import { formatDuration, type LabConfig } from "@/lib/lab-types";
@@ -36,14 +36,48 @@ type Row = {
   started_at: string | null;
   finished_at: string | null;
   duration_ms: number | null;
+  experiment_id: string | null;
+  sweep_value: number | null;
   worlds: number;
   emerged: number;
 };
+
+type GroupItem =
+  | { kind: "experiment"; experimentId: string; runs: number }
+  | { kind: "run"; run: Row };
+
+/** Sweep runs are listed under a header row for their parent experiment. */
+function groupRows(rows: Row[]): GroupItem[] {
+  const out: GroupItem[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const exp = r.experiment_id;
+    if (exp && !seen.has(exp)) {
+      seen.add(exp);
+      out.push({ kind: "experiment", experimentId: exp, runs: rows.filter((x) => x.experiment_id === exp).length });
+      for (const child of rows.filter((x) => x.experiment_id === exp)) out.push({ kind: "run", run: child });
+    } else if (!exp) {
+      out.push({ kind: "run", run: r });
+    }
+  }
+  return out;
+}
 
 function Runs() {
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const doExport = useServerFn(exportRun);
+  const doExportSweep = useServerFn(exportExperiment);
+
+  const downloadSweep = async (experimentId: string) => {
+    setBusy(experimentId);
+    try {
+      const doc = await doExportSweep({ data: { experimentId } });
+      downloadSweepJson(experimentId, doc);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const download = async (runId: string) => {
     setBusy(runId);
@@ -59,7 +93,7 @@ function Runs() {
     void (async () => {
       const { data: runs } = await supabase
         .from("runs")
-        .select("id,created_at,label,status,config,started_at,finished_at,duration_ms")
+        .select("id,created_at,label,status,config,started_at,finished_at,duration_ms,experiment_id,sweep_value")
         .order("created_at", { ascending: false })
         .limit(50);
       const { data: worlds } = await supabase.from("worlds").select("run_id,cross_agent_read,solicit_write");
@@ -108,41 +142,69 @@ function Runs() {
                 </td>
               </tr>
             )}
-            {rows.map((r) => (
-              <tr key={r.id} className="bg-background/40">
+            {groupRows(rows).map((item) =>
+              item.kind === "experiment" ? (
+                <tr key={`exp-${item.experimentId}`} className="bg-card/60">
+                  <td colSpan={9} className="px-3 py-2 font-mono text-primary">
+                    Persistence sweep {item.experimentId.slice(0, 8)}
+                    <span className="ml-2 text-muted-foreground">{item.runs} points</span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center justify-end gap-3">
+                      <Link
+                        to="/experiment/$experimentId"
+                        params={{ experimentId: item.experimentId }}
+                        className="font-mono uppercase tracking-widest text-primary hover:underline"
+                      >
+                        Open sweep
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy === item.experimentId}
+                        onClick={() => void downloadSweep(item.experimentId)}
+                        className="font-mono text-[10px] uppercase tracking-widest"
+                      >
+                        {busy === item.experimentId ? "Building…" : "Download sweep"}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+              <tr key={item.run.id} className="bg-background/40">
                 <td className="px-3 py-2 font-mono">
-                  {new Date(r.created_at).toLocaleString()}
-                  <span className="ml-2 text-muted-foreground">{r.status}</span>
+                  {new Date(item.run.created_at).toLocaleString()}
+                  <span className="ml-2 text-muted-foreground">{item.run.status}</span>
                 </td>
                 <td className="px-3 py-2 font-mono">
-                  {new Date(r.started_at ?? r.created_at).toLocaleString()}
+                  {new Date(item.run.started_at ?? item.run.created_at).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 font-mono">
-                  {r.duration_ms != null ? formatDuration(r.duration_ms) : "—"}
+                  {item.run.duration_ms != null ? formatDuration(item.run.duration_ms) : "—"}
                 </td>
-                <td className="px-3 py-2 font-mono text-primary">{r.config?.taskMode ?? "assisted"}</td>
-                <td className="px-3 py-2 font-mono">{Math.round((r.config?.difficulty ?? 0) * 100)}%</td>
-                <td className="px-3 py-2 font-mono">{r.config?.reasoningBudget ?? "—"}</td>
-                <td className="px-3 py-2 font-mono">{Math.round((r.config?.persistence ?? 0) * 100)}%</td>
-                <td className="px-3 py-2 font-mono">{r.worlds}</td>
+                <td className="px-3 py-2 font-mono text-primary">{item.run.config?.taskMode ?? "assisted"}</td>
+                <td className="px-3 py-2 font-mono">{Math.round((item.run.config?.difficulty ?? 0) * 100)}%</td>
+                <td className="px-3 py-2 font-mono">{item.run.config?.reasoningBudget ?? "—"}</td>
+                <td className="px-3 py-2 font-mono">{Math.round((item.run.config?.persistence ?? 0) * 100)}%</td>
+                <td className="px-3 py-2 font-mono">{item.run.worlds}</td>
                 <td className="px-3 py-2 font-mono text-primary">
-                  {r.worlds ? Math.round((r.emerged / r.worlds) * 100) : 0}%
+                  {item.run.worlds ? Math.round((item.run.emerged / item.run.worlds) * 100) : 0}%
                   <span className="ml-1 text-muted-foreground">
-                    ({r.emerged}/{r.worlds})
+                    ({item.run.emerged}/{item.run.worlds})
                   </span>
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center justify-end gap-3">
                     <Link
                       to="/run/$runId"
-                      params={{ runId: r.id }}
+                      params={{ runId: item.run.id }}
                       className="font-mono uppercase tracking-widest text-primary hover:underline"
                     >
                       Open
                     </Link>
                     <Link
                       to="/replay/$runId"
-                      params={{ runId: r.id }}
+                      params={{ runId: item.run.id }}
                       className="font-mono uppercase tracking-widest text-primary hover:underline"
                     >
                       Replay
@@ -150,16 +212,17 @@ function Runs() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      disabled={busy === r.id}
-                      onClick={() => void download(r.id)}
+                      disabled={busy === item.run.id}
+                      onClick={() => void download(item.run.id)}
                       className="font-mono text-[10px] uppercase tracking-widest"
                     >
-                      {busy === r.id ? "Building…" : "Download JSON"}
+                      {busy === item.run.id ? "Building…" : "Download JSON"}
                     </Button>
                   </div>
                 </td>
               </tr>
-            ))}
+              ),
+            )}
           </tbody>
         </table>
       </div>
