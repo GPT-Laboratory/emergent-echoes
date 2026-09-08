@@ -7,10 +7,11 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { supabase } from "@/integrations/supabase/client";
 
 function NotFoundComponent() {
   return (
@@ -163,6 +164,18 @@ function RootComponent() {
             <span className="ml-auto font-mono text-[11px] text-muted-foreground">
               sandboxed simulation · no external targets
             </span>
+            {signedIn ? (
+              <button
+                onClick={() => void signOut()}
+                className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link to="/auth" className="font-mono text-[11px] uppercase tracking-widest text-primary">
+                Sign in
+              </Link>
+            )}
           </div>
         </header>
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
