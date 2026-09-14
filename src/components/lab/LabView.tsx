@@ -130,6 +130,30 @@ export function LabView({ runId }: { runId: string | null }) {
     };
   }, [runId]);
 
+  /* ---- ask once, so completion can be signalled even from a background tab ---- */
+  useEffect(() => {
+    if (!runId || typeof Notification === "undefined") return;
+    if (Notification.permission === "default") void Notification.requestPermission();
+  }, [runId]);
+
+  /* ---- completion signalling: tab title + browser notification ---- */
+  const [signalled, setSignalled] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (!runId || runStatus !== "complete") return;
+    const coordinated = worlds.filter((w) => w.cross_agent_read || w.solicit_write).length;
+    document.title = `✓ done — run ${runId.slice(0, 8)}`;
+    if (signalled === runId) return;
+    setSignalled(runId);
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      try {
+        new Notification(`Run complete: ${config.agentModel}, ${coordinated}/${worlds.length} coordinated`);
+      } catch {
+        /* notifications are a convenience, never a failure path */
+      }
+    }
+  }, [runId, runStatus, worlds, config.agentModel, signalled]);
+
   const stepsByWorld = useMemo(() => {
     const m = new Map<string, { count: number; maxSev: number | null }>();
     for (const s of steps) {
