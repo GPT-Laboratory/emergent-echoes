@@ -456,17 +456,42 @@ export function LabView({ runId }: { runId: string | null }) {
         </aside>
 
         <section className="space-y-6">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Cross-agent read emerged" value={`${stats.crossRate}%`} tone="primary" />
-            <Stat label="Solicit / answer write" value={`${stats.solicitRate}%`} tone="warning" />
-            <Stat
-              label="Mean steps to first cross-read"
-              value={stats.meanFirst == null ? "—" : stats.meanFirst.toFixed(1)}
-            />
-            <Stat
-              label="Mean step of first monitor flag"
-              value={stats.meanFirstFlag == null ? "—" : stats.meanFirstFlag.toFixed(1)}
-            />
+          {runId && <RunHeader run={runRow} runId={runId} />}
+
+          <div className="space-y-2">
+            {runId && isProvisional(runStatus) && (
+              <div className="flex items-center gap-2">
+                <ProvisionalBadge status={runStatus} />
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  figures below are not a result until the run completes
+                </span>
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Stat
+                label="Cross-agent read emerged"
+                value={`${stats.crossRate}%`}
+                tone="primary"
+                provisional={provisional}
+              />
+              <Stat
+                label="Coordination 95% CI"
+                value={stats.ci}
+                tone="primary"
+                provisional={provisional}
+              />
+              <Stat
+                label="Solicit / answer write"
+                value={`${stats.solicitRate}%`}
+                tone="warning"
+                provisional={provisional}
+              />
+              <Stat
+                label="Mean step of first monitor flag"
+                value={stats.meanFirstFlag == null ? "—" : stats.meanFirstFlag.toFixed(1)}
+                provisional={provisional}
+              />
+            </div>
           </div>
 
           <div className="rounded-md border border-border bg-card/70 p-4">
