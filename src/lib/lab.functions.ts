@@ -989,8 +989,10 @@ export const exportExperiment = createServerFn({ method: "POST" })
 
     const cfg = { ...DEFAULT_CONFIG, ...((exp.fixed_config ?? {}) as Partial<LabConfig>) } as LabConfig;
 
-    type SweepPointDoc = {
-      persistence: number;
+    type ReplicateDoc = {
+      replicate_index: number;
+      replicate_seed: number | null;
+      api_seed: number | null;
       run_id: string;
       started_at: string | null;
       finished_at: string | null;
@@ -998,11 +1000,16 @@ export const exportExperiment = createServerFn({ method: "POST" })
       summary: ReturnType<typeof summarisePoint>;
       run: RunExport;
     };
-    const points: SweepPointDoc[] = [];
+
+    const byPoint = new Map<number, ReplicateDoc[]>();
     for (const r of runs ?? []) {
       const doc = await buildRunExport(supabase, r.id as string);
-      points.push({
-        persistence: Number(r.sweep_value ?? 0),
+      const p = Number(r.sweep_value ?? 0);
+      const list = byPoint.get(p) ?? [];
+      list.push({
+        replicate_index: Number((r as { replicate_index?: number }).replicate_index ?? 0),
+        replicate_seed: ((r as { replicate_seed?: number | null }).replicate_seed ?? null),
+        api_seed: ((r as { api_seed?: number | null }).api_seed ?? null),
         run_id: String(r.id),
         started_at: (r.started_at as string | null) ?? null,
         finished_at: (r.finished_at as string | null) ?? null,
@@ -1010,12 +1017,61 @@ export const exportExperiment = createServerFn({ method: "POST" })
         summary: summarisePoint(doc),
         run: doc,
       });
+      byPoint.set(p, list);
     }
 
+    /** Pool every world across every replicate, then report Wilson intervals. */
+    const points = [...byPoint.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([persistence, reps]) => {
+        const sorted = [...reps].sort((a, b) => a.replicate_index - b.replicate_index);
+        const sum = (f: (s: ReplicateDoc["summary"]) => number) =>
+          sorted.reduce((acc, r) => acc + f(r.summary), 0);
+
+        const worldsTotal = sum((s) => s.worlds_total);
+        const crossed = sum((s) => s.worlds_with_cross_agent_read);
+        const solicited = sum((s) => s.worlds_with_solicit_or_answer_write);
+
+        // Empty submissions are per interdependent agent, recomputed from the runs.
+        let interAgents = 0;
+        let emptyAgents = 0;
+        let writes = 0;
+        let crossEvents = 0;
+        for (const r of sorted) {
+          for (const w of r.run.worlds) {
+            for (const a of w.agents) {
+              if (!a.task.interdependency.group_id) continue;
+              interAgents += 1;
+              if (!(a.final_submission ?? "").trim()) emptyAgents += 1;
+            }
+            writes += w.steps.filter((s) => s.action.tool === "write").length;
+            crossEvents += w.steps.filter((s) => s.result.returned_foreign_keys.length > 0).length;
+          }
+        }
+
+        const worldsCount = worldsTotal || 1;
+        return {
+          persistence,
+          replicates: sorted,
+          stats: {
+            worlds_total: worldsTotal,
+            coordination: wilson(crossed, worldsTotal),
+            solicit_or_answer_write: wilson(solicited, worldsTotal),
+            empty_submission: wilson(emptyAgents, interAgents),
+            mean_total_steps_per_agent: spread(sorted.map((r) => r.summary.mean_total_steps_per_agent)),
+            coordination_rate_per_replicate: spread(sorted.map((r) => r.summary.coordination_rate)),
+            writes_per_world: writes / worldsCount,
+            cross_agent_events_per_world: crossEvents / worldsCount,
+          },
+        };
+      });
+
+    const agentTempEffective = effectiveTemperature(AGENT_MODEL, cfg.agentTemperature);
+    const monitorTempEffective = effectiveTemperature(MONITOR_MODEL, cfg.monitorTemperature);
     const expDurationMs = (exp.duration_ms as number | null) ?? null;
 
     return {
-      schema_version: "1.1",
+      schema_version: "1.2",
       experiment: {
         id: String(exp.id),
         type: String(exp.type),
@@ -1031,6 +1087,14 @@ export const exportExperiment = createServerFn({ method: "POST" })
           world_count: cfg.worldCount,
           agents_per_world: cfg.agentsPerWorld,
           alert_threshold: cfg.alertThreshold,
+          replicates: cfg.replicates,
+          base_seed: (exp.base_seed as number | null) ?? cfg.baseSeed ?? null,
+          same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
+          agent_temperature: cfg.agentTemperature,
+          monitor_temperature: cfg.monitorTemperature,
+          agent_temperature_effective: agentTempEffective,
+          monitor_temperature_effective: monitorTempEffective,
+          provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
         },
         models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
         sweep_variable: "persistence",
@@ -1040,8 +1104,11 @@ export const exportExperiment = createServerFn({ method: "POST" })
       sweep_summary: {
         coordination_rate_by_persistence: points.map((p) => ({
           persistence: p.persistence,
-          coordination_rate: p.summary.coordination_rate,
-          empty_submission_rate: p.summary.empty_submission_rate,
+          worlds_total: p.stats.worlds_total,
+          coordination_rate: p.stats.coordination.rate,
+          coordination_ci95: [p.stats.coordination.low, p.stats.coordination.high],
+          empty_submission_rate: p.stats.empty_submission.rate,
+          empty_submission_ci95: [p.stats.empty_submission.low, p.stats.empty_submission.high],
         })),
       },
     };
