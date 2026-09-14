@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Fragment, useEffect, useState } from "react";
 
+import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { Button } from "@/components/ui/button";
 import {
   downloadRunJson,
@@ -107,6 +108,7 @@ function Runs() {
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [bulk, setBulk] = useState<string | null>(null);
+  const [openRow, setOpenRow] = useState<string | null>(null);
   const doExport = useServerFn(exportRun);
   const doExportSweep = useServerFn(exportExperiment);
 
@@ -254,8 +256,17 @@ function Runs() {
                       </td>
                     </tr>
                   ) : (
-                    <tr key={item.run.id} className="bg-background/40">
+                    <Fragment key={item.run.id}>
+                    <tr className="bg-background/40">
                       <td className="px-3 py-2 font-mono">
+                        <button
+                          type="button"
+                          onClick={() => setOpenRow(openRow === item.run.id ? null : item.run.id)}
+                          className="mr-2 text-muted-foreground hover:text-primary"
+                          aria-label="Show full run header"
+                        >
+                          {openRow === item.run.id ? "▾" : "▸"}
+                        </button>
                         {new Date(item.run.created_at).toLocaleString()}
                         <span className="ml-2 text-muted-foreground">{item.run.status}</span>
                       </td>
@@ -272,8 +283,18 @@ function Runs() {
                       <td className="px-3 py-2 font-mono">
                         {item.run.config?.replicates ?? 1} × {item.run.config?.worldCount ?? item.run.worlds}
                       </td>
-                      <td className="px-3 py-2 font-mono text-primary">
+                      <td
+                        className={[
+                          "px-3 py-2 font-mono",
+                          isProvisional(item.run.status) ? "text-muted-foreground/70" : "text-primary",
+                        ].join(" ")}
+                      >
                         {rateWithCi(item.run.emerged, item.run.worlds)}
+                        {isProvisional(item.run.status) && (
+                          <div className="mt-1">
+                            <ProvisionalBadge status={item.run.status} />
+                          </div>
+                        )}
                       </td>
                       <td className="max-w-[220px] truncate px-3 py-2 text-muted-foreground" title={item.run.config?.runNote ?? ""}>
                         {item.run.config?.runNote || "—"}
@@ -312,6 +333,14 @@ function Runs() {
                         </div>
                       </td>
                     </tr>
+                    {openRow === item.run.id && (
+                      <tr className="bg-background/60">
+                        <td colSpan={9} className="px-3 py-2">
+                          <RunHeader run={item.run as unknown as RunRow} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ),
                 )}
               </Fragment>

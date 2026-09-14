@@ -5,10 +5,12 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { Button } from "@/components/ui/button";
 import { ConfigPanel } from "@/components/lab/ConfigPanel";
 import { PropensityChart, type SweepPoint } from "@/components/lab/PropensityChart";
+import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadRunJson } from "@/lib/export-client";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
+import { wilson } from "@/lib/stats";
 import {
   activateRun,
   createReplicateSet,
@@ -25,14 +27,30 @@ import { cancelDriver, cancelSweep, getSweepProgress, isDriving, startDriver, st
 
 type SweepKnob = "difficulty" | "reasoningBudget" | "persistence";
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "primary" | "warning" }) {
+function Stat({
+  label,
+  value,
+  tone,
+  provisional,
+}: {
+  label: string;
+  value: string;
+  tone?: "primary" | "warning";
+  provisional?: boolean;
+}) {
   return (
     <div className="rounded-md border border-border bg-card/70 px-4 py-3">
       <div className="label-caps">{label}</div>
       <div
         className={[
           "mt-1 font-mono text-2xl",
-          tone === "primary" ? "text-primary" : tone === "warning" ? "text-warning" : "text-foreground",
+          provisional
+            ? "text-muted-foreground/70"
+            : tone === "primary"
+              ? "text-primary"
+              : tone === "warning"
+                ? "text-warning"
+                : "text-foreground",
         ].join(" ")}
       >
         {value}
@@ -45,6 +63,7 @@ export function LabView({ runId }: { runId: string | null }) {
   const navigate = useNavigate();
   const [config, setConfig] = useState<LabConfig>(DEFAULT_CONFIG);
   const [runStatus, setRunStatus] = useState<string | null>(null);
+  const [runRow, setRunRow] = useState<RunRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sweepKnob, setSweepKnob] = useState<SweepKnob>("difficulty");
   const [sweep, setSweep] = useState<SweepPoint[]>([]);
@@ -85,14 +104,20 @@ export function LabView({ runId }: { runId: string | null }) {
   useEffect(() => {
     if (!runId) {
       setRunStatus(null);
+      setRunRow(null);
       return;
     }
     let cancelled = false;
     const load = async () => {
-      const { data } = await supabase.from("runs").select("config,status").eq("id", runId).maybeSingle();
+      const { data } = await supabase
+        .from("runs")
+        .select("id,config,status,started_at,created_at,finished_at,duration_ms,experiment_id")
+        .eq("id", runId)
+        .maybeSingle();
       if (cancelled || !data) return;
       setConfig({ ...DEFAULT_CONFIG, ...(data.config as Partial<LabConfig>) });
       setRunStatus(data.status as string);
+      setRunRow(data as unknown as RunRow);
     };
     void load();
     const channel = supabase
@@ -125,8 +150,10 @@ export function LabView({ runId }: { runId: string | null }) {
         ? crossed.reduce((acc, w) => acc + (w.first_cross_read_step ?? 0), 0) / crossed.length
         : null;
     const flaggedFirst = worlds.map((w) => w.first_flag_step).filter((v): v is number => v != null);
+    const w95 = wilson(crossed.length, worlds.length);
     return {
       crossRate: Math.round((crossed.length / n) * 100),
+      ci: worlds.length ? `${Math.round(w95.low * 100)}–${Math.round(w95.high * 100)}%` : "—",
       solicitRate: Math.round((solicited / n) * 100),
       meanFirst,
       meanFirstFlag: flaggedFirst.length ? flaggedFirst.reduce((a, b) => a + b, 0) / flaggedFirst.length : null,
@@ -251,6 +278,7 @@ export function LabView({ runId }: { runId: string | null }) {
   };
 
   const readOnly = runId != null;
+  const provisional = runId != null && isProvisional(runStatus);
 
   return (
     <main className="mx-auto max-w-[1600px] px-5 py-6">
@@ -263,8 +291,7 @@ export function LabView({ runId }: { runId: string | null }) {
             </p>
             {runId && (
               <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                run {runId.slice(0, 8)} · {config.agentModel} · {config.taskMode} · {config.schedulerMode} ·{" "}
-                {runStatus ?? "…"} {driving ? "· driving" : ""}
+                run {runId.slice(0, 8)} · {runStatus ?? "…"} {driving ? "· driving" : ""}
               </p>
             )}
             {!runId && (
@@ -433,17 +460,42 @@ export function LabView({ runId }: { runId: string | null }) {
         </aside>
 
         <section className="space-y-6">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Cross-agent read emerged" value={`${stats.crossRate}%`} tone="primary" />
-            <Stat label="Solicit / answer write" value={`${stats.solicitRate}%`} tone="warning" />
-            <Stat
-              label="Mean steps to first cross-read"
-              value={stats.meanFirst == null ? "—" : stats.meanFirst.toFixed(1)}
-            />
-            <Stat
-              label="Mean step of first monitor flag"
-              value={stats.meanFirstFlag == null ? "—" : stats.meanFirstFlag.toFixed(1)}
-            />
+          {runId && <RunHeader run={runRow} runId={runId} />}
+
+          <div className="space-y-2">
+            {runId && isProvisional(runStatus) && (
+              <div className="flex items-center gap-2">
+                <ProvisionalBadge status={runStatus} />
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  figures below are not a result until the run completes
+                </span>
+              </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Stat
+                label="Cross-agent read emerged"
+                value={`${stats.crossRate}%`}
+                tone="primary"
+                provisional={provisional}
+              />
+              <Stat
+                label="Coordination 95% CI"
+                value={stats.ci}
+                tone="primary"
+                provisional={provisional}
+              />
+              <Stat
+                label="Solicit / answer write"
+                value={`${stats.solicitRate}%`}
+                tone="warning"
+                provisional={provisional}
+              />
+              <Stat
+                label="Mean step of first monitor flag"
+                value={stats.meanFirstFlag == null ? "—" : stats.meanFirstFlag.toFixed(1)}
+                provisional={provisional}
+              />
+            </div>
           </div>
 
           <div className="rounded-md border border-border bg-card/70 p-4">
