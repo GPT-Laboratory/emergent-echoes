@@ -33,6 +33,7 @@ export type StepRow = {
   action: Record<string, unknown>;
   observation: string | null;
   cross_agent_read: boolean;
+  foreign_keys: string[] | null;
   monitor_severity: number | null;
   monitor_label: string | null;
   monitor_note: string | null;
