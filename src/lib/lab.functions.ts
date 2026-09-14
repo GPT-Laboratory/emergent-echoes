@@ -1091,6 +1091,36 @@ async function buildRunExport(supabase: Supa, runId: string) {
     const agentTempEffective = effectiveTemperature(agentModelOf(cfg), cfg.agentTemperature);
     const monitorTempEffective = effectiveTemperature(MONITOR_MODEL_ID, cfg.monitorTemperature);
 
+    /* ---- monitor validation against any human codings of this run's steps ---- */
+    const stepIds = allSteps.map((s) => String(s["id"]));
+    const { data: codingRows } = stepIds.length
+      ? await supabase.from("human_codings").select("*").in("step_id", stepIds)
+      : { data: [] as Array<Record<string, unknown>> };
+    const stepMetaById = new Map(allSteps.map((s) => [String(s["id"]), s]));
+    const sevPairs: Array<[number, number]> = [];
+    const awarePairs: Array<[string, string]> = [];
+    for (const c of (codingRows ?? []) as Array<Record<string, unknown>>) {
+      const s = stepMetaById.get(String(c["step_id"]));
+      if (!s) continue;
+      if (c["human_severity"] != null && s["monitor_severity"] != null) {
+        sevPairs.push([Number(s["monitor_severity"]), Number(c["human_severity"])]);
+      }
+      if (c["human_awareness"] && s["awareness_label"]) {
+        awarePairs.push([String(s["awareness_label"]), String(c["human_awareness"])]);
+      }
+    }
+    const monitorValidationBlock =
+      (codingRows ?? []).length === 0
+        ? null
+        : {
+            coded_steps: (codingRows ?? []).length,
+            severity_weighted_kappa: sevPairs.length ? weightedKappa(sevPairs, 1, 7) : null,
+            awareness_kappa: awarePairs.length ? cohenKappa(awarePairs) : null,
+            method: "Cohen's kappa (awareness, nominal); linear-weighted kappa (severity, 1–7)",
+          };
+
+    const runTokens = sumTokens(worldsOut.map((w) => w.outcome.tokens));
+
     return {
       schema_version: "1.2",
       run: {
