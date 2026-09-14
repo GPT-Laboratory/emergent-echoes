@@ -835,8 +835,17 @@ async function buildRunExport(supabase: Supa, runId: string) {
           base_seed: cfg.baseSeed ?? null,
           same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
         },
-        models: { agent_model: agentModelOf(cfg), monitor_model: MONITOR_MODEL_ID },
+        note: cfg.runNote ?? "",
+        models: {
+          agent_model: agentModelOf(cfg),
+          agent_provider: providerOf(agentModelOf(cfg)),
+          monitor_model: MONITOR_MODEL_ID,
+          monitor_provider: providerOf(MONITOR_MODEL_ID),
+          monitor_temperature: cfg.monitorTemperature,
+          monitor_locked: true,
+        },
       },
+
       worlds: worldsOut,
       aggregate: {
         worlds_total: worldsOut.length,
