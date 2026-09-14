@@ -818,6 +818,54 @@ async function buildRunExport(supabase: Supa, runId: string) {
           ((s["foreign_keys"] as string[] | null) ?? []).length > 0,
       );
 
+      const budget = effectiveBudget(cfg);
+      const agentsOut = agents.map((a) => {
+        const task = (a["task"] ?? {}) as Record<string, unknown>;
+        const dep = (task["interdependency"] ?? null) as Record<string, unknown> | null;
+        const mySteps = steps.filter((s) => s["agent_id"] === a["id"]);
+        const answer = a["answer"] == null ? null : String(a["answer"]);
+        const expected = task["expected"] ?? null;
+        const tokens = sumTokens(
+          mySteps.map((s) => ({
+            tokens_in: (s["tokens_in"] as number | null) ?? null,
+            tokens_out: (s["tokens_out"] as number | null) ?? null,
+            tokens_reasoning: (s["tokens_reasoning"] as number | null) ?? null,
+          })),
+        );
+        return {
+          index: Number(a["index"]),
+          task: {
+            text: String(task["prompt"] ?? ""),
+            category: String(task["category"] ?? task["kind"] ?? "solvable_alone"),
+            expected_answer: expected == null ? null : String(expected),
+            interdependency: {
+              group_id: (dep?.["group_id"] as string | null) ?? null,
+              mode: (dep?.["mode"] as string | null) ?? null,
+              produces: (dep?.["produces"] as Record<string, string | number | null> | undefined) ?? {},
+              holds: (dep?.["holds"] as Record<string, string> | undefined) ?? {},
+              needs: (dep?.["needs"] as string[] | undefined) ?? [],
+              completed_by_agents: (dep?.["completed_by_agents"] as number[] | undefined) ?? [],
+            },
+          },
+          status: String(a["status"]),
+          final_submission: answer,
+          submission_correct: submissionCorrect(expected, answer),
+          hit_step_ceiling: Number(a["step_count"] ?? mySteps.length) >= budget,
+          steps_taken: mySteps.length,
+          tokens,
+          estimated_cost_usd: estimateCostUsd(agentModelOf(cfg), tokens),
+          started_at: a["started_at"] == null ? null : String(a["started_at"]),
+          finished_at: a["finished_at"] == null ? null : String(a["finished_at"]),
+        };
+      });
+
+      const pairAgents = agentsOut.filter((a) => a.task.interdependency.group_id);
+      const worldTokens = sumTokens(agentsOut.map((a) => a.tokens));
+      const maxAwareness =
+        AWARENESS_LABELS[
+          Math.max(0, ...steps.map((s) => awarenessRank(s["awareness_label"] as string | null)))
+        ] ?? "none";
+
       return {
         index: Number(w.index),
         task_seed: (w as { task_seed?: number | null }).task_seed ?? null,
@@ -830,30 +878,14 @@ async function buildRunExport(supabase: Supa, runId: string) {
           solicit_or_answer_write: Boolean(w.solicit_write),
           steps_to_first_cross_read: w.first_cross_read_step ?? null,
           step_of_first_monitor_flag: w.first_flag_step ?? null,
+          pair_correct_count: pairAgents.filter((a) => a.submission_correct === true).length,
+          pair_agents_total: pairAgents.length,
+          any_write: steps.some((s) => String(((s["action"] ?? {}) as Record<string, unknown>)["tool"] ?? "") === "write"),
+          max_awareness: maxAwareness,
+          tokens: worldTokens,
+          estimated_cost_usd: estimateCostUsd(agentModelOf(cfg), worldTokens),
         },
-        agents: agents.map((a) => {
-          const task = (a["task"] ?? {}) as Record<string, unknown>;
-          const dep = (task["interdependency"] ?? null) as Record<string, unknown> | null;
-          return {
-            index: Number(a["index"]),
-            task: {
-              text: String(task["prompt"] ?? ""),
-              category: String(task["category"] ?? task["kind"] ?? "solvable_alone"),
-              interdependency: {
-                group_id: (dep?.["group_id"] as string | null) ?? null,
-                mode: (dep?.["mode"] as string | null) ?? null,
-                produces: (dep?.["produces"] as Record<string, string | number | null> | undefined) ?? {},
-                holds: (dep?.["holds"] as Record<string, string> | undefined) ?? {},
-                needs: (dep?.["needs"] as string[] | undefined) ?? [],
-                completed_by_agents: (dep?.["completed_by_agents"] as number[] | undefined) ?? [],
-              },
-            },
-            status: String(a["status"]),
-            final_submission: a["answer"] == null ? null : String(a["answer"]),
-            started_at: a["started_at"] == null ? null : String(a["started_at"]),
-            finished_at: a["finished_at"] == null ? null : String(a["finished_at"]),
-          };
-        }),
+        agents: agentsOut,
         steps: steps.map((s) => {
           const action = (s["action"] ?? {}) as Record<string, unknown>;
           const tool = String(action["tool"] ?? "");
