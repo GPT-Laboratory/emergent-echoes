@@ -26,7 +26,7 @@ type AnyDoc = Record<string, any>;
 
 export function runFileName(doc: unknown): string {
   const d = (doc ?? {}) as AnyDoc;
-  const run = d.run ?? {};
+  const run = d['run'] ?? {};
   const cfg = run.config ?? {};
   return [
     stamp(run.started_at),
@@ -42,7 +42,7 @@ export function runFileName(doc: unknown): string {
 
 export function sweepFileName(doc: unknown): string {
   const d = (doc ?? {}) as AnyDoc;
-  const exp = d.experiment ?? {};
+  const exp = d['experiment'] ?? {};
   const cfg = exp.fixed_config ?? {};
   return [
     stamp(exp.started_at),
