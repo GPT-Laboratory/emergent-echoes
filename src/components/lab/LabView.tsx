@@ -9,7 +9,7 @@ import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadRunJson } from "@/lib/export-client";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
-import { activateRun, createRun, createSweep, exportRun, finishExperiment, stopRun, tickWorld } from "@/lib/lab.functions";
+import { activateRun, createRun, createSweep, exportRun, finishExperiment, stepAgent, stopRun, tickWorld } from "@/lib/lab.functions";
 import { DEFAULT_CONFIG, type LabConfig } from "@/lib/lab-types";
 import { cancelDriver, cancelSweep, getSweepProgress, isDriving, startDriver, startSweep, subscribeDrivers } from "@/lib/run-driver";
 
@@ -48,6 +48,12 @@ export function LabView({ runId }: { runId: string | null }) {
   const doSweep = useServerFn(createSweep);
   const doActivate = useServerFn(activateRun);
   const doFinish = useServerFn(finishExperiment);
+  const doStepAgent = useServerFn(stepAgent);
+
+  const driverOpts = () => ({
+    mode: config.schedulerMode,
+    stepAgent: (a: { data: { agentId: string } }) => doStepAgent(a),
+  });
 
   const driving = useSyncExternalStore(
     subscribeDrivers,
@@ -161,7 +167,7 @@ export function LabView({ runId }: { runId: string | null }) {
     setError(null);
     try {
       const res = await doCreate({ data: { config } });
-      void startDriver(res.runId, (a) => doTick(a), (msg) => setError(msg));
+      void startDriver(res.runId, (a) => doTick(a), (msg) => setError(msg), driverOpts());
       void navigate({ to: "/run/$runId", params: { runId: res.runId } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -186,6 +192,7 @@ export function LabView({ runId }: { runId: string | null }) {
         res.runs,
         { tick: (a) => doTick(a), activate: (a) => doActivate(a), finish: (a) => doFinish(a) },
         (msg) => setError(msg),
+        driverOpts(),
       );
       void navigate({ to: "/experiment/$experimentId", params: { experimentId: res.experimentId } });
     } catch (e) {
@@ -231,7 +238,8 @@ export function LabView({ runId }: { runId: string | null }) {
             </p>
             {runId && (
               <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                run {runId.slice(0, 8)} · {config.taskMode} · {runStatus ?? "…"} {driving ? "· driving" : ""}
+                run {runId.slice(0, 8)} · {config.taskMode} · {config.schedulerMode} · {runStatus ?? "…"}{" "}
+                {driving ? "· driving" : ""}
               </p>
             )}
           </div>
@@ -268,6 +276,41 @@ export function LabView({ runId }: { runId: string | null }) {
             </div>
             <p className="text-xs leading-snug text-muted-foreground">
               Selecting a mode changes nothing until you press Run or Sweep persistence.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <div className="label-caps">Scheduler</div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["lockstep", "async"] as const).map((m) => {
+                const active = config.schedulerMode === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={readOnly}
+                    aria-pressed={active}
+                    onClick={() => setConfig({ ...config, schedulerMode: m })}
+                    title={
+                      m === "lockstep"
+                        ? "Every agent takes exactly one step per tick and waits for the others."
+                        : "No barrier: each agent's next step is dispatched as soon as its previous one returns."
+                    }
+                    className={[
+                      "rounded-md border px-2 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors",
+                      active
+                        ? "border-primary bg-primary/20 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground",
+                      readOnly ? "cursor-not-allowed opacity-60" : "",
+                    ].join(" ")}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs leading-snug text-muted-foreground">
+              Async removes the wait-for-everyone barrier. Interleaving then comes only from real model latency.
             </p>
           </div>
 
@@ -341,7 +384,8 @@ export function LabView({ runId }: { runId: string | null }) {
 
           {sweepProgress && !sweepProgress.finished && (
             <div className="rounded-md border border-border bg-card/70 p-2 font-mono text-[11px] text-muted-foreground">
-              {config.taskMode} · sweep point {sweepProgress.pointIndex + 1}/{sweepProgress.totalPoints} · persistence{" "}
+              {config.taskMode} · {config.schedulerMode} · sweep point {sweepProgress.pointIndex + 1}/
+              {sweepProgress.totalPoints} · persistence{" "}
               {sweepProgress.persistence} · worlds {sweepProgress.worldsDone}/{sweepProgress.worldsTotal}
               <button
                 onClick={() => cancelSweep(sweepProgress.experimentId)}

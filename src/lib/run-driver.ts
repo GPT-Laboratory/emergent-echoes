@@ -6,6 +6,83 @@ import { supabase } from "@/integrations/supabase/client";
  */
 
 type Tick = (args: { data: { worldId: string } }) => Promise<unknown>;
+type StepAgent = (args: { data: { agentId: string } }) => Promise<{ done?: boolean } | unknown>;
+
+export type DriverOptions = {
+  /** "lockstep" keeps the barrier between ticks; "async" removes it. */
+  mode?: "lockstep" | "async";
+  stepAgent?: StepAgent;
+};
+
+/** Retry only genuinely transient transport failures. */
+async function withRetry(fn: () => Promise<unknown>, onError?: (msg: string) => void) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const transient = /network|fetch|load failed|timeout|abort|502|503|504|429/i.test(msg);
+      if (!transient || attempt === 2) {
+        onError?.(msg);
+        return null;
+      }
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  return null;
+}
+
+/**
+ * ASYNC scheduler. Every agent runs its own loop: the next step is dispatched
+ * the moment the previous one returns, with no wait for any other agent. The
+ * only interleaving comes from real model latency — no synthetic delays.
+ * A cap on simultaneous in-flight calls keeps the gateway from rejecting bursts.
+ */
+async function driveAsync(runId: string, stepAgent: StepAgent, onError?: (msg: string) => void) {
+  const MAX_IN_FLIGHT = 8;
+  let inFlight = 0;
+  const waiting: Array<() => void> = [];
+  const acquire = async () => {
+    if (inFlight < MAX_IN_FLIGHT) {
+      inFlight += 1;
+      return;
+    }
+    await new Promise<void>((r) => waiting.push(r));
+    inFlight += 1;
+  };
+  const release = () => {
+    inFlight -= 1;
+    waiting.shift()?.();
+  };
+
+  const { data: worlds } = await supabase.from("worlds").select("id").eq("run_id", runId);
+  const worldIds = (worlds ?? []).map((w) => w.id as string);
+  if (!worldIds.length) return;
+
+  const { data: agents } = await supabase
+    .from("agents")
+    .select("id")
+    .in("world_id", worldIds)
+    .eq("status", "running");
+
+  await Promise.all(
+    (agents ?? []).map(async (a) => {
+      const agentId = a.id as string;
+      for (;;) {
+        if (cancelled.has(runId)) return;
+        await acquire();
+        let res: unknown;
+        try {
+          res = await withRetry(() => stepAgent({ data: { agentId } }), onError);
+        } finally {
+          release();
+        }
+        const done = (res as { done?: boolean } | null)?.done;
+        if (done !== false) return;
+      }
+    }),
+  );
+}
 
 const driving = new Set<string>();
 const cancelled = new Set<string>();
@@ -28,13 +105,21 @@ export function cancelDriver(runId: string) {
   cancelled.add(runId);
 }
 
-export async function startDriver(runId: string, tick: Tick, onError?: (msg: string) => void) {
+export async function startDriver(
+  runId: string,
+  tick: Tick,
+  onError?: (msg: string) => void,
+  opts?: DriverOptions,
+) {
   if (driving.has(runId)) return;
   driving.add(runId);
   cancelled.delete(runId);
   emit();
 
   try {
+    if (opts?.mode === "async" && opts.stepAgent) {
+      await driveAsync(runId, opts.stepAgent, onError);
+    } else
     for (;;) {
       if (cancelled.has(runId)) break;
       const { data: active } = await supabase
@@ -120,6 +205,7 @@ export async function startSweep(
     finish: (args: { data: { experimentId: string; status: "complete" | "stopped" } }) => Promise<unknown>;
   },
   onError?: (msg: string) => void,
+  opts?: DriverOptions,
 ) {
   sweepCancelled.delete(experimentId);
 
@@ -153,7 +239,7 @@ export async function startSweep(
       }
     })();
 
-    await startDriver(point.runId, deps.tick, onError);
+    await startDriver(point.runId, deps.tick, onError, opts);
     polling = false;
     await poll.catch(() => null);
   }

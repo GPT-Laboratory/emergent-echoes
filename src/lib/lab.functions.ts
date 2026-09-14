@@ -7,6 +7,7 @@ import { generateWorldTasks, type AgentTask } from "./tasks";
 
 const ConfigSchema = z.object({
   taskMode: z.enum(["assisted", "emergent"]).default("assisted"),
+  schedulerMode: z.enum(["lockstep", "async"]).default("lockstep"),
   worldCount: z.number().int().min(1).max(20),
   agentsPerWorld: z.number().int().min(2).max(8),
   reasoningBudget: z.number().int().min(2).max(30),
@@ -218,29 +219,66 @@ export const tickWorld = createServerFn({ method: "POST" })
 
     await Promise.all(agents.map((agent) => runAgentStep(supabase, world, cfg, agent)));
 
-    const { count } = await supabase
-      .from("agents")
-      .select("id", { count: "exact", head: true })
-      .eq("world_id", data.worldId)
-      .eq("status", "running");
-    const remaining = count ?? 0;
-    if (remaining === 0) {
-      await supabase.from("worlds").update({ status: "complete" }).eq("id", data.worldId);
-      const { count: worldsLeft } = await supabase
-        .from("worlds")
-        .select("id", { count: "exact", head: true })
-        .eq("run_id", world.run_id)
-        .eq("status", "running");
-      if ((worldsLeft ?? 0) === 0) {
-        await supabase
-          .from("runs")
-          .update({ status: "complete", finished_at: new Date().toISOString() })
-          .eq("id", world.run_id)
-          .eq("status", "running");
-      }
-    }
+    const remaining = await settleWorld(supabase, data.worldId, world.run_id as string);
     return { active: remaining, done: remaining === 0 };
   });
+
+/**
+ * ASYNC scheduler: advance exactly one agent by one step, with no barrier.
+ * The caller loops per agent, so agents interleave purely by model latency.
+ */
+export const stepAgent = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ agentId: z.string().uuid() }).parse(d))
+  .handler(async ({ data }) => {
+    const supabase = await db();
+
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id,index,status,step_count,task,world_id")
+      .eq("id", data.agentId)
+      .single();
+    if (!agent || agent.status !== "running") return { done: true };
+
+    const { data: world } = await supabase.from("worlds").select("*").eq("id", agent.world_id).single();
+    if (!world || world.status !== "running") return { done: true };
+
+    const { data: run } = await supabase.from("runs").select("config,status").eq("id", world.run_id).single();
+    if (!run || run.status !== "running") return { done: true };
+    const cfg = { ...DEFAULT_CONFIG, ...(run.config as Partial<LabConfig>) } as LabConfig;
+
+    await runAgentStep(supabase, world, cfg, agent as unknown as AgentRow);
+
+    const { data: after } = await supabase.from("agents").select("status").eq("id", data.agentId).single();
+    const stillRunning = after?.status === "running";
+    if (!stillRunning) await settleWorld(supabase, agent.world_id as string, world.run_id as string);
+    return { done: !stillRunning };
+  });
+
+/** Close out a world (and its run) once no agent in it is still running. */
+async function settleWorld(supabase: Supa, worldId: string, runId: string) {
+  const { count } = await supabase
+    .from("agents")
+    .select("id", { count: "exact", head: true })
+    .eq("world_id", worldId)
+    .eq("status", "running");
+  const remaining = count ?? 0;
+  if (remaining === 0) {
+    await supabase.from("worlds").update({ status: "complete" }).eq("id", worldId).eq("status", "running");
+    const { count: worldsLeft } = await supabase
+      .from("worlds")
+      .select("id", { count: "exact", head: true })
+      .eq("run_id", runId)
+      .eq("status", "running");
+    if ((worldsLeft ?? 0) === 0) {
+      await supabase
+        .from("runs")
+        .update({ status: "complete", finished_at: new Date().toISOString() })
+        .eq("id", runId)
+        .eq("status", "running");
+    }
+  }
+  return remaining;
+}
 
 type Supa = Awaited<ReturnType<typeof db>>;
 
@@ -252,6 +290,7 @@ async function runAgentStep(
 ) {
   const stepIndex = agent.step_count;
   const stepsLeft = Math.max(0, effectiveBudget(cfg) - stepIndex);
+  const startedAt = new Date().toISOString();
 
   const { data: history } = await supabase
     .from("steps")
@@ -316,7 +355,15 @@ async function runAgentStep(
       monitor_severity: null,
       monitor_label: null,
     });
-    await supabase.from("agents").update({ status: "error", step_count: stepIndex + 1 }).eq("id", agent.id);
+    await supabase
+      .from("agents")
+      .update({
+        status: "error",
+        step_count: stepIndex + 1,
+        ...(stepIndex === 0 ? { started_at: startedAt } : {}),
+        finished_at: new Date().toISOString(),
+      })
+      .eq("id", agent.id);
     return;
   }
 
@@ -421,6 +468,8 @@ async function runAgentStep(
       step_count: stepIndex + 1,
       status: finished ? "done" : "running",
       answer,
+      ...(stepIndex === 0 ? { started_at: startedAt } : {}),
+      ...(finished ? { finished_at: new Date().toISOString() } : {}),
     })
     .eq("id", agent.id);
 
@@ -553,6 +602,8 @@ async function buildRunExport(supabase: Supa, runId: string) {
             },
             status: String(a["status"]),
             final_submission: a["answer"] == null ? null : String(a["answer"]),
+            started_at: a["started_at"] == null ? null : String(a["started_at"]),
+            finished_at: a["finished_at"] == null ? null : String(a["finished_at"]),
           };
         }),
         steps: steps.map((s) => {
@@ -623,6 +674,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
         status: String(run.status),
         config: {
           task_mode: cfg.taskMode,
+          scheduler_mode: cfg.schedulerMode,
           reasoning_budget_steps: cfg.reasoningBudget,
           task_difficulty: cfg.difficulty,
           persistence: cfg.persistence,
@@ -875,6 +927,7 @@ export const exportExperiment = createServerFn({ method: "POST" })
         duration_human: expDurationMs == null ? null : formatDuration(expDurationMs),
         task_mode: String(exp.task_mode),
         fixed_config: {
+          scheduler_mode: cfg.schedulerMode,
           reasoning_budget_steps: cfg.reasoningBudget,
           task_difficulty: cfg.difficulty,
           world_count: cfg.worldCount,
