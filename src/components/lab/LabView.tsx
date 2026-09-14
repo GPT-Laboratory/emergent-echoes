@@ -629,6 +629,15 @@ export function LabView({ runId }: { runId: string | null }) {
                 provisional={provisional}
               />
             </div>
+
+            {/* One-line funnel: every stage between writing and a correct answer. */}
+            <div
+              className="rounded-md border border-border bg-card/40 px-4 py-2 font-mono text-[11px] text-muted-foreground"
+              title="write: worlds where any agent wrote · exposure: a list() returned a foreign key · coord: a read() returned a foreign key · correct: interdependent submissions matching ground truth · ceiling: agents that used the whole step budget · aware: worlds where the classifier saw awareness of another agent"
+            >
+              funnel · write {stats.writeRate}% · exposure {stats.exposureRate}% · coord {stats.crossRate}% · correct{" "}
+              {stats.correctRate}% · ceiling {stats.ceilingRate}% · aware {stats.awareRate}%
+            </div>
           </div>
 
           <div className="rounded-md border border-border bg-card/70 p-4">
