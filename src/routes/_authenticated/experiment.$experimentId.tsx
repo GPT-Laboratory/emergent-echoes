@@ -109,6 +109,16 @@ function ExperimentDetail() {
       const runOfWorld = new Map((worlds ?? []).map((w) => [w.id as string, w.run_id as string]));
       setExp(e ? ({ ...e, sweep_points: (e.sweep_points ?? []) as number[] } as Exp) : null);
 
+      const allRuns = runs ?? [];
+      const allWorlds = (worlds ?? []) as Array<{ run_id: string; status: string }>;
+      setProgress({
+        runsDone: allRuns.filter((r) => r.status === "complete").length,
+        runsTotal: allRuns.length,
+        worldsDone: allWorlds.filter((w) => w.status !== "running").length,
+        worldsTotal: allWorlds.length,
+        activeRunId: (allRuns.find((r) => r.status === "running")?.id as string | undefined) ?? null,
+      });
+
       const byPoint = new Map<number, typeof runs>();
       for (const r of runs ?? []) {
         const p = Number(r.sweep_value ?? 0);
