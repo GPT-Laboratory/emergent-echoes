@@ -8,13 +8,17 @@ function stamp(iso?: string | null): string {
   return `${t.getUTCFullYear()}${p(t.getUTCMonth() + 1)}${p(t.getUTCDate())}-${p(t.getUTCHours())}${p(t.getUTCMinutes())}`;
 }
 
-/** "openai/gpt-6-astra" -> "astra" */
+/** "openai/gpt-6-astra" -> "astra"; "anthropic/claude-sonnet-5" -> "sonnet" */
 function modelShort(id: unknown): string {
   const raw = typeof id === "string" ? id : "";
-  const last = raw.split("/").pop() ?? "";
+  const last = (raw.split("/").pop() ?? "").toLowerCase();
+  for (const family of ["haiku", "sonnet", "opus", "fable"]) {
+    if (last.includes(family)) return family;
+  }
   const seg = last.split(/[-_.]/).filter(Boolean).pop() ?? "model";
   return seg.toLowerCase();
 }
+
 
 /** 0.5 -> "05", 0.45 -> "045", 1 -> "1" */
 function persistenceTag(v: unknown): string {
