@@ -101,14 +101,20 @@ export function LabView({ runId }: { runId: string | null }) {
   useEffect(() => {
     if (!runId) {
       setRunStatus(null);
+      setRunRow(null);
       return;
     }
     let cancelled = false;
     const load = async () => {
-      const { data } = await supabase.from("runs").select("config,status").eq("id", runId).maybeSingle();
+      const { data } = await supabase
+        .from("runs")
+        .select("id,config,status,started_at,created_at,finished_at,duration_ms,experiment_id")
+        .eq("id", runId)
+        .maybeSingle();
       if (cancelled || !data) return;
       setConfig({ ...DEFAULT_CONFIG, ...(data.config as Partial<LabConfig>) });
       setRunStatus(data.status as string);
+      setRunRow(data as unknown as RunRow);
     };
     void load();
     const channel = supabase
