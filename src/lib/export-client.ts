@@ -28,6 +28,13 @@ function persistenceTag(v: unknown): string {
 
 type AnyDoc = Record<string, any>;
 
+/** "recheck-only" -> "c-recheck-only"; legacy slider -> "p05" */
+function persistenceSegment(clause: unknown, persistence: unknown): string {
+  const c = typeof clause === "string" ? clause : "slider-legacy";
+  if (c && c !== "slider-legacy") return `c-${c}`;
+  return `p${persistenceTag(persistence ?? 0)}`;
+}
+
 export function runFileName(doc: unknown): string {
   const d = (doc ?? {}) as AnyDoc;
   const run = d['run'] ?? {};
@@ -38,7 +45,7 @@ export function runFileName(doc: unknown): string {
     String(cfg.task_mode ?? "assisted"),
     String(cfg.scheduler_mode ?? "lockstep"),
     modelShort(run.models?.agent_model),
-    `p${persistenceTag(cfg.persistence)}`,
+    persistenceSegment(cfg.persistence_clause, cfg.persistence),
     `b${cfg.reasoning_budget_steps ?? 0}`,
     `w${cfg.world_count ?? 0}`,
   ].join("_") + ".json";
@@ -48,9 +55,10 @@ export function sweepFileName(doc: unknown): string {
   const d = (doc ?? {}) as AnyDoc;
   const exp = d['experiment'] ?? {};
   const cfg = exp.fixed_config ?? {};
+  const variable = String(exp.sweep_variable ?? "persistence");
   return [
     stamp(exp.started_at),
-    `sweep-${String(exp.sweep_variable ?? "persistence")}`,
+    `sweep-${variable === "persistence_clause" ? "clause" : variable}`,
     String(exp.task_mode ?? cfg.task_mode ?? "assisted"),
     String(cfg.scheduler_mode ?? "lockstep"),
     modelShort(exp.models?.agent_model),
@@ -88,6 +96,7 @@ export function runFileNameFromConfig(
     taskMode?: string;
     schedulerMode?: string;
     persistence?: number;
+    persistenceClause?: string;
     reasoningBudget?: number;
     worldCount?: number;
   } | null,
@@ -100,7 +109,7 @@ export function runFileNameFromConfig(
     String(c.taskMode ?? "assisted"),
     String(c.schedulerMode ?? "lockstep"),
     modelShort(agentModelId),
-    `p${persistenceTag(c.persistence ?? 0)}`,
+    persistenceSegment(c.persistenceClause, c.persistence ?? 0),
     `b${c.reasoningBudget ?? 0}`,
     `w${c.worldCount ?? 0}`,
   ].join("_") + ".json";
@@ -116,7 +125,7 @@ export function sweepFileNameFromConfig(
   const c = cfg ?? {};
   return [
     stamp(startedAt),
-    `sweep-${sweepVariable}`,
+    `sweep-${sweepVariable === "persistence_clause" ? "clause" : sweepVariable}`,
     taskMode || "assisted",
     String(c.schedulerMode ?? "lockstep"),
     modelShort(agentModelId),

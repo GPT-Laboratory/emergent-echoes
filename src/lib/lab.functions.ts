@@ -15,6 +15,9 @@ import {
   DEFAULT_CONFIG,
   MONITOR_LABELS,
   MONITOR_MODEL_ID,
+  PERSISTENCE_CLAUSES,
+  CLAUSE_SWEEP_POINTS,
+  clauseSelectorActive,
   REASONING_EFFORTS,
   WORKER_MODELS,
   effectiveReasoningEffort,
@@ -33,6 +36,7 @@ import {
   MONITOR_MAX_TOKENS,
   MONITOR_SYSTEM,
   agentSystemPrompt,
+  clauseTextFor,
   agentUserMessage,
   monitorUserMessage,
 } from "./prompt-spec";
@@ -57,6 +61,7 @@ const ConfigSchema = z
     reasoningBudget: z.number().int().min(2).max(30),
     difficulty: z.number().min(0).max(1),
     persistence: z.number().min(0).max(1),
+    persistenceClause: z.enum(PERSISTENCE_CLAUSES).default("slider-legacy"),
     alertThreshold: z.number().int().min(1).max(7),
     humanTimerSeconds: z.number().int().min(3).max(120),
     defaultHumanAction: z.enum(["no_action", "stop_world"]),
@@ -211,7 +216,7 @@ export const createReplicateSet = createServerFn({ method: "POST" })
         type: "replicate_set",
         task_mode: cfg.taskMode,
         fixed_config: { ...cfg, baseSeed },
-        sweep_points: [cfg.persistence],
+        sweep_points: [clauseSelectorActive(cfg) ? cfg.persistenceClause : cfg.persistence],
         base_seed: baseSeed,
         status: "running",
       })
@@ -227,7 +232,7 @@ export const createReplicateSet = createServerFn({ method: "POST" })
         status: "queued",
         label: `replicate ${r + 1}/${cfg.replicates}`,
         experimentId: exp.id as string,
-        sweepValue: cfg.persistence,
+        sweepValue: clauseSelectorActive(cfg) ? 0 : cfg.persistence,
       });
       runs.push({ runId: made.runId, persistence: cfg.persistence });
     }
@@ -793,7 +798,9 @@ async function buildRunExport(supabase: Supa, runId: string) {
           scheduler_mode: cfg.schedulerMode,
           reasoning_budget_steps: cfg.reasoningBudget,
           task_difficulty: cfg.difficulty,
-          persistence: cfg.persistence,
+          persistence: clauseSelectorActive(cfg) ? null : cfg.persistence,
+          persistence_clause: cfg.persistenceClause ?? "slider-legacy",
+          persistence_clause_text: clauseTextFor(cfg),
           world_count: cfg.worldCount,
           agents_per_world: cfg.agentsPerWorld,
           store_read_limit: STORE_READ_LIMIT,
@@ -829,7 +836,9 @@ async function buildRunExport(supabase: Supa, runId: string) {
       /** Same shape as a sweep export: one point, one replicate. */
       points: [
         {
-          persistence: cfg.persistence,
+          persistence: clauseSelectorActive(cfg) ? null : cfg.persistence,
+          persistence_clause: cfg.persistenceClause ?? "slider-legacy",
+          persistence_clause_text: clauseTextFor(cfg),
           replicates: [
             {
               replicate_index: runMeta.replicate_index ?? 0,
@@ -876,23 +885,28 @@ export const createSweep = createServerFn({ method: "POST" })
     z
       .object({
         config: ConfigSchema,
-        points: z.array(z.number().min(0).max(1)).min(1).max(10),
+        /** Numeric persistence sweep (legacy slider). */
+        points: z.array(z.number().min(0).max(1)).min(1).max(10).optional(),
+        /** Clause ablation sweep; runs in exactly the order given. */
+        clausePoints: z.array(z.enum(CLAUSE_SWEEP_POINTS)).min(1).max(4).optional(),
       })
       .parse(d),
   )
   .handler(async ({ data }) => {
     const supabase = await db();
     const cfg = data.config;
-    const points = [...data.points].sort((a, b) => a - b);
+    const clausePoints = data.clausePoints ?? null;
+    const points = clausePoints ? [] : [...(data.points ?? [])].sort((a, b) => a - b);
+    if (!clausePoints && !points.length) throw new Error("no sweep points given");
     const baseSeed = cfg.baseSeed ?? randomSeed();
 
     const { data: exp, error } = await supabase
       .from("experiments")
       .insert({
-        type: "persistence_sweep",
+        type: clausePoints ? "persistence_clause_sweep" : "persistence_sweep",
         task_mode: cfg.taskMode,
         fixed_config: { ...cfg, baseSeed },
-        sweep_points: points,
+        sweep_points: clausePoints ?? points,
         base_seed: baseSeed,
         status: "running",
       })
@@ -901,7 +915,29 @@ export const createSweep = createServerFn({ method: "POST" })
     if (error || !exp) throw new Error(error?.message ?? "could not create experiment");
 
     // Each sweep point is a set of replicates; they run one after another.
-    const runIds: Array<{ runId: string; persistence: number }> = [];
+    const runIds: Array<{ runId: string; persistence: number; label?: string }> = [];
+
+    if (clausePoints) {
+      // sweep_value is numeric in the database, so the clause is recorded by its
+      // index here and by name in every run's own config (and in the export).
+      for (let i = 0; i < clausePoints.length; i++) {
+        const clause = clausePoints[i]!;
+        const pointCfg = { ...cfg, persistenceClause: clause };
+        for (let r = 0; r < cfg.replicates; r++) {
+          const made = await insertReplicate(supabase, pointCfg, {
+            baseSeed,
+            replicateIndex: r,
+            status: "queued",
+            label: `clause ${clause} · replicate ${r + 1}/${cfg.replicates}`,
+            experimentId: exp.id as string,
+            sweepValue: i,
+          });
+          runIds.push({ runId: made.runId, persistence: i, label: clause });
+        }
+      }
+      return { experimentId: exp.id as string, runs: runIds };
+    }
+
     for (const p of points) {
       const pointCfg = { ...cfg, persistence: p };
       for (let r = 0; r < cfg.replicates; r++) {
@@ -1180,13 +1216,24 @@ export const exportExperiment = createServerFn({ method: "POST" })
       byPoint.set(p, list);
     }
 
+    /**
+     * A clause sweep records the clause index in sweep_value (the column is
+     * numeric); the names live in the experiment's sweep_points, in run order.
+     */
+    const isClauseSweep = String(exp.type) === "persistence_clause_sweep";
+    const clauseNames = isClauseSweep ? ((exp.sweep_points ?? []) as string[]) : null;
+
     /** Pool every world across every replicate, then report Wilson intervals. */
     const points = [...byPoint.entries()]
       .sort((a, b) => a[0] - b[0])
-      .map(([persistence, reps]) => {
+      .map(([value, reps]) => {
         const sorted = [...reps].sort((a, b) => a.replicate_index - b.replicate_index);
+        const clause = clauseNames?.[value] ?? null;
         return {
-          persistence,
+          persistence: isClauseSweep || clauseSelectorActive(cfg) ? null : value,
+          persistence_clause: clause ?? (isClauseSweep ? null : (cfg.persistenceClause ?? "slider-legacy")),
+          persistence_clause_text:
+            clause != null ? clauseTextFor({ persistence: cfg.persistence, persistenceClause: clause as never }) : null,
           replicates: sorted,
           stats: pointStats(sorted.map((r) => r.run.worlds)),
         };
@@ -1211,6 +1258,9 @@ export const exportExperiment = createServerFn({ method: "POST" })
           scheduler_mode: cfg.schedulerMode,
           reasoning_budget_steps: cfg.reasoningBudget,
           task_difficulty: cfg.difficulty,
+          persistence: isClauseSweep || clauseSelectorActive(cfg) ? null : cfg.persistence,
+          persistence_clause: isClauseSweep ? "swept" : (cfg.persistenceClause ?? "slider-legacy"),
+          persistence_clause_text: isClauseSweep ? null : clauseTextFor(cfg),
           world_count: cfg.worldCount,
           agents_per_world: cfg.agentsPerWorld,
           alert_threshold: cfg.alertThreshold,
@@ -1239,8 +1289,8 @@ export const exportExperiment = createServerFn({ method: "POST" })
           monitor_temperature: cfg.monitorTemperature,
           monitor_locked: true,
         },
-        sweep_variable: "persistence",
-        sweep_points: (exp.sweep_points ?? []) as number[],
+        sweep_variable: isClauseSweep ? "persistence_clause" : "persistence",
+        sweep_points: (exp.sweep_points ?? []) as Array<number | string>,
         seed_policy: {
           replicate_seed: "base_seed + replicate_index; drives per-world task_seed",
           api_seed_supported: false,
@@ -1252,6 +1302,7 @@ export const exportExperiment = createServerFn({ method: "POST" })
       sweep_summary: {
         coordination_rate_by_persistence: points.map((p) => ({
           persistence: p.persistence,
+          persistence_clause: p.persistence_clause,
           worlds_total: p.stats.worlds_total,
           coordination_rate: p.stats.coordination.rate,
           coordination_ci95: p.stats.coordination.ci95,

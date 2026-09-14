@@ -40,7 +40,7 @@ type Exp = {
   finished_at: string | null;
   duration_ms: number | null;
   base_seed: number | null;
-  sweep_points: number[];
+  sweep_points: Array<number | string>;
 };
 
 type Replicate = {
@@ -202,6 +202,10 @@ function ExperimentDetail() {
   const pct =
     progress && progress.worldsTotal ? Math.round((progress.worldsDone / progress.worldsTotal) * 100) : 0;
 
+  // Clause sweeps store the clause index in sweep_value; names live on the experiment.
+  const isClauseSweep = exp?.type === "persistence_clause_sweep";
+  const clauseNames = (exp?.sweep_points ?? []).map((v) => String(v));
+
   return (
     <main className="mx-auto max-w-[1200px] px-5 py-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -247,7 +251,9 @@ function ExperimentDetail() {
 
 
       <div className="mt-5 rounded-md border border-border bg-card/70 p-4">
-        <h2 className="mb-3 font-mono text-sm text-foreground">Coordination rate by persistence</h2>
+        <h2 className="mb-3 font-mono text-sm text-foreground">
+          Coordination rate by {isClauseSweep ? "persistence clause" : "persistence"}
+        </h2>
         <DoseResponseChart data={points} />
         <p className="mt-2 text-[11px] text-muted-foreground">
           Points pool every world across all replicates. Error bars are 95% Wilson score intervals.
@@ -258,7 +264,7 @@ function ExperimentDetail() {
         <table className="w-full text-left text-xs">
           <thead className="bg-card/70 font-mono uppercase tracking-widest text-[10px] text-muted-foreground">
             <tr>
-              <th className="px-3 py-2">Persistence</th>
+              <th className="px-3 py-2">{isClauseSweep ? "Clause" : "Persistence"}</th>
               <th className="px-3 py-2">Replicates</th>
               <th className="px-3 py-2">Worlds</th>
               <th className="px-3 py-2">Coordination (95% CI)</th>
@@ -270,7 +276,9 @@ function ExperimentDetail() {
             {points.map((p) => (
               <Fragment key={p.persistence}>
                 <tr className="bg-background/40">
-                  <td className="px-3 py-2 font-mono text-primary">{p.persistence.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-mono text-primary">
+                    {isClauseSweep ? (clauseNames[p.persistence] ?? String(p.persistence)) : p.persistence.toFixed(2)}
+                  </td>
                   <td className="px-3 py-2 font-mono">{p.replicates.length}</td>
                   <td className="px-3 py-2 font-mono">{p.worlds}</td>
                   <td className="px-3 py-2 font-mono text-primary">

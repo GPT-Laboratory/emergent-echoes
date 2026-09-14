@@ -23,7 +23,7 @@ import {
   stopRun,
   tickWorld,
 } from "@/lib/lab.functions";
-import { DEFAULT_CONFIG, type LabConfig } from "@/lib/lab-types";
+import { CLAUSE_SWEEP_POINTS, DEFAULT_CONFIG, clauseSelectorActive, type LabConfig } from "@/lib/lab-types";
 import { cancelDriver, cancelSweep, getSweepProgress, isDriving, startDriver, startSweep, subscribeDrivers } from "@/lib/run-driver";
 
 type SweepKnob = "difficulty" | "reasoningBudget" | "persistence";
@@ -265,19 +265,22 @@ export function LabView({ runId }: { runId: string | null }) {
     }
   };
 
-  /* ---- SWEEP: same configuration, persistence varied point by point ---- */
+  /* ---- SWEEP: same configuration, one point per clause (or per persistence value) ---- */
   const startSweepRun = async () => {
     setError(null);
+    const clauseSweep = clauseSelectorActive(config);
     const points = sweepPoints
       .split(",")
       .map((v) => Number(v.trim()))
       .filter((v) => Number.isFinite(v) && v >= 0 && v <= 1);
-    if (!points.length) {
+    if (!clauseSweep && !points.length) {
       setError("Enter at least one persistence value between 0 and 1.");
       return;
     }
     try {
-      const res = await doSweep({ data: { config, points } });
+      const res = await doSweep({
+        data: clauseSweep ? { config, clausePoints: [...CLAUSE_SWEEP_POINTS] } : { config, points },
+      });
       void startSweep(
         res.experimentId,
         res.runs,
@@ -428,10 +431,14 @@ export function LabView({ runId }: { runId: string | null }) {
                 <Button
                   onClick={() => void startSweepRun()}
                   variant="outline"
-                  title="Runs the same configuration once per persistence value and plots the dose-response curve."
+                  title={
+                    clauseSelectorActive(config)
+                      ? `Runs the same configuration once per clause: ${CLAUSE_SWEEP_POINTS.join(", ")}.`
+                      : "Runs the same configuration once per persistence value and plots the dose-response curve."
+                  }
                   className="font-mono text-xs uppercase tracking-widest"
                 >
-                  Sweep persistence
+                  {clauseSelectorActive(config) ? "Sweep clause" : "Sweep persistence"}
                 </Button>
               </>
             )}
@@ -481,25 +488,36 @@ export function LabView({ runId }: { runId: string | null }) {
             </Button>
           </div>
 
-          {!runId && (
-            <div className="space-y-1">
-              <label className="label-caps" htmlFor="sweep-points">
-                Sweep points (persistence)
-              </label>
-              <input
-                id="sweep-points"
-                value={sweepPoints}
-                onChange={(e) => setSweepPoints(e.target.value)}
-                className="w-full rounded-md border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
-              />
-            </div>
-          )}
+          {!runId &&
+            (clauseSelectorActive(config) ? (
+              <div className="space-y-1">
+                <div className="label-caps">Sweep points (clause)</div>
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  {CLAUSE_SWEEP_POINTS.join(" → ")} · fixed order, one base seed, {config.replicates} replicates each
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <label className="label-caps" htmlFor="sweep-points">
+                  Sweep points (persistence)
+                </label>
+                <input
+                  id="sweep-points"
+                  value={sweepPoints}
+                  onChange={(e) => setSweepPoints(e.target.value)}
+                  className="w-full rounded-md border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
+                />
+              </div>
+            ))}
 
           {sweepProgress && !sweepProgress.finished && (
             <div className="rounded-md border border-border bg-card/70 p-2 font-mono text-[11px] text-muted-foreground">
               {config.agentModel} · {config.taskMode} · {config.schedulerMode} · sweep point {sweepProgress.pointIndex + 1}/
-              {sweepProgress.totalPoints} · persistence{" "}
-              {sweepProgress.persistence} · worlds {sweepProgress.worldsDone}/{sweepProgress.worldsTotal}
+              {sweepProgress.totalPoints} ·{" "}
+              {sweepProgress.label
+                ? `clause ${sweepProgress.label}`
+                : `persistence ${sweepProgress.persistence}`}{" "}
+              · worlds {sweepProgress.worldsDone}/{sweepProgress.worldsTotal}
               <button
                 onClick={() => cancelSweep(sweepProgress.experimentId)}
                 className="ml-2 uppercase tracking-widest text-destructive hover:underline"
