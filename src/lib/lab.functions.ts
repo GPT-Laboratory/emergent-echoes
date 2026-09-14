@@ -1,8 +1,18 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { AGENT_MODEL, MONITOR_MODEL, chat, extractJson, GatewayError } from "./ai.server";
+import {
+  AGENT_MODEL,
+  MONITOR_MODEL,
+  PROVIDER_DEFAULT_TEMPERATURE,
+  chat,
+  effectiveTemperature,
+  extractJson,
+  GatewayError,
+} from "./ai.server";
 import { DEFAULT_CONFIG, MONITOR_LABELS, formatDuration, type LabConfig } from "./lab-types";
+import { deriveSeed, randomSeed } from "./rng";
+import { spread, wilson } from "./stats";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
 const ConfigSchema = z.object({
@@ -16,11 +26,76 @@ const ConfigSchema = z.object({
   alertThreshold: z.number().int().min(1).max(7),
   humanTimerSeconds: z.number().int().min(3).max(120),
   defaultHumanAction: z.enum(["no_action", "stop_world"]),
+  agentTemperature: z.number().min(0).max(2).default(1),
+  monitorTemperature: z.number().min(0).max(2).default(0),
+  replicates: z.number().int().min(1).max(10).default(3),
+  baseSeed: z.number().int().nullable().default(null),
+  sameTasksAcrossReplicates: z.boolean().default(false),
 });
 
 async function db() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
+}
+
+type Cfg = z.infer<typeof ConfigSchema>;
+
+/**
+ * Create one replicate: its run row plus every world, with each world's tasks
+ * drawn from a seed derived from the replicate seed and the world index.
+ */
+async function insertReplicate(
+  supabase: Supa,
+  cfg: Cfg,
+  opts: {
+    baseSeed: number;
+    replicateIndex: number;
+    status: "running" | "queued";
+    label?: string | null;
+    experimentId?: string | null;
+    sweepValue?: number | null;
+  },
+) {
+  const replicateSeed = opts.baseSeed + opts.replicateIndex;
+  const taskRoot = cfg.sameTasksAcrossReplicates ? opts.baseSeed : replicateSeed;
+
+  const { data: run, error } = await supabase
+    .from("runs")
+    .insert({
+      config: { ...cfg, baseSeed: opts.baseSeed },
+      status: opts.status,
+      label: opts.label ?? null,
+      experiment_id: opts.experimentId ?? null,
+      sweep_value: opts.sweepValue ?? null,
+      replicate_index: opts.replicateIndex,
+      replicate_seed: replicateSeed,
+      api_seed: null,
+    })
+    .select()
+    .single();
+  if (error || !run) throw new Error(error?.message ?? "could not create run");
+
+  for (let w = 0; w < cfg.worldCount; w++) {
+    const taskSeed = deriveSeed(taskRoot, w);
+    const { data: world, error: we } = await supabase
+      .from("worlds")
+      .insert({ run_id: run.id, index: w, status: "running", task_seed: taskSeed })
+      .select()
+      .single();
+    if (we || !world) throw new Error(we?.message ?? "could not create world");
+
+    const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode, taskSeed);
+    const rows = tasks.map((t, i) => ({
+      world_id: world.id,
+      index: i,
+      task: t as unknown as Record<string, unknown>,
+      status: "running",
+    }));
+    const { error: ae } = await supabase.from("agents").insert(rows as never);
+    if (ae) throw new Error(ae.message);
+  }
+
+  return { runId: run.id as string, replicateIndex: opts.replicateIndex, replicateSeed };
 }
 
 /* ------------------------------------------------------------------ */
