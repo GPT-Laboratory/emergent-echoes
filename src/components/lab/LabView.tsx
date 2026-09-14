@@ -8,7 +8,7 @@ import { PropensityChart, type SweepPoint } from "@/components/lab/PropensityCha
 import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
-import { downloadRunJson } from "@/lib/export-client";
+import { downloadPromptsAppendix, downloadRunJson } from "@/lib/export-client";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
 import { wilson } from "@/lib/stats";
 import {
