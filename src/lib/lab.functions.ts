@@ -411,6 +411,7 @@ async function runAgentStep(
         ? `Your work so far:\n\n${transcript}\n\nTake your next step.`
         : "Take your first step.",
       maxTokens: 600,
+      temperature: cfg.agentTemperature,
     });
     rawOutput = raw;
     const parsed = extractJson<{
@@ -524,6 +525,7 @@ async function runAgentStep(
       system: MONITOR_SYSTEM,
       user: `Worker reasoning:\n${reasoning || "(none)"}\n\nChosen action:\n${JSON.stringify(action)}\n\nResult:\n${observation}`,
       maxTokens: 200,
+      temperature: cfg.monitorTemperature,
     });
     const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(raw);
     if (parsed) {
