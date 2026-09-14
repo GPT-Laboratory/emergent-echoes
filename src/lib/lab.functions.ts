@@ -1,8 +1,18 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { AGENT_MODEL, MONITOR_MODEL, chat, extractJson, GatewayError } from "./ai.server";
+import {
+  AGENT_MODEL,
+  MONITOR_MODEL,
+  PROVIDER_DEFAULT_TEMPERATURE,
+  chat,
+  effectiveTemperature,
+  extractJson,
+  GatewayError,
+} from "./ai.server";
 import { DEFAULT_CONFIG, MONITOR_LABELS, formatDuration, type LabConfig } from "./lab-types";
+import { deriveSeed, randomSeed } from "./rng";
+import { spread, wilson } from "./stats";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
 const ConfigSchema = z.object({
@@ -16,11 +26,76 @@ const ConfigSchema = z.object({
   alertThreshold: z.number().int().min(1).max(7),
   humanTimerSeconds: z.number().int().min(3).max(120),
   defaultHumanAction: z.enum(["no_action", "stop_world"]),
+  agentTemperature: z.number().min(0).max(2).default(1),
+  monitorTemperature: z.number().min(0).max(2).default(0),
+  replicates: z.number().int().min(1).max(10).default(3),
+  baseSeed: z.number().int().nullable().default(null),
+  sameTasksAcrossReplicates: z.boolean().default(false),
 });
 
 async function db() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
+}
+
+type Cfg = z.infer<typeof ConfigSchema>;
+
+/**
+ * Create one replicate: its run row plus every world, with each world's tasks
+ * drawn from a seed derived from the replicate seed and the world index.
+ */
+async function insertReplicate(
+  supabase: Supa,
+  cfg: Cfg,
+  opts: {
+    baseSeed: number;
+    replicateIndex: number;
+    status: "running" | "queued";
+    label?: string | null;
+    experimentId?: string | null;
+    sweepValue?: number | null;
+  },
+) {
+  const replicateSeed = opts.baseSeed + opts.replicateIndex;
+  const taskRoot = cfg.sameTasksAcrossReplicates ? opts.baseSeed : replicateSeed;
+
+  const { data: run, error } = await supabase
+    .from("runs")
+    .insert({
+      config: { ...cfg, baseSeed: opts.baseSeed },
+      status: opts.status,
+      label: opts.label ?? null,
+      experiment_id: opts.experimentId ?? null,
+      sweep_value: opts.sweepValue ?? null,
+      replicate_index: opts.replicateIndex,
+      replicate_seed: replicateSeed,
+      api_seed: null,
+    })
+    .select()
+    .single();
+  if (error || !run) throw new Error(error?.message ?? "could not create run");
+
+  for (let w = 0; w < cfg.worldCount; w++) {
+    const taskSeed = deriveSeed(taskRoot, w);
+    const { data: world, error: we } = await supabase
+      .from("worlds")
+      .insert({ run_id: run.id, index: w, status: "running", task_seed: taskSeed })
+      .select()
+      .single();
+    if (we || !world) throw new Error(we?.message ?? "could not create world");
+
+    const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode, taskSeed);
+    const rows = tasks.map((t, i) => ({
+      world_id: world.id,
+      index: i,
+      task: t as unknown as Record<string, unknown>,
+      status: "running",
+    }));
+    const { error: ae } = await supabase.from("agents").insert(rows as never);
+    if (ae) throw new Error(ae.message);
+  }
+
+  return { runId: run.id as string, replicateIndex: opts.replicateIndex, replicateSeed };
 }
 
 /* ------------------------------------------------------------------ */
@@ -109,40 +184,58 @@ export const createRun = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const supabase = await db();
     const cfg = data.config;
+    const baseSeed = cfg.baseSeed ?? randomSeed();
 
-    const { data: run, error } = await supabase
-      .from("runs")
+    const res = await insertReplicate(supabase, cfg, {
+      baseSeed,
+      replicateIndex: 0,
+      status: data.status ?? "running",
+      label: data.label ?? null,
+      experimentId: data.experimentId ?? null,
+      sweepValue: data.sweepValue ?? null,
+    });
+    return { runId: res.runId };
+  });
+
+/**
+ * A replicate set: N independent repetitions of one configuration, grouped by
+ * an experiment so the pooled rate and its confidence interval are reportable.
+ */
+export const createReplicateSet = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ config: ConfigSchema }).parse(d))
+  .handler(async ({ data }) => {
+    const supabase = await db();
+    const cfg = data.config;
+    const baseSeed = cfg.baseSeed ?? randomSeed();
+
+    const { data: exp, error } = await supabase
+      .from("experiments")
       .insert({
-        config: cfg,
-        status: data.status ?? "running",
-        label: data.label ?? null,
-        experiment_id: data.experimentId ?? null,
-        sweep_value: data.sweepValue ?? null,
+        type: "replicate_set",
+        task_mode: cfg.taskMode,
+        fixed_config: { ...cfg, baseSeed },
+        sweep_points: [cfg.persistence],
+        base_seed: baseSeed,
+        status: "running",
       })
       .select()
       .single();
-    if (error) throw new Error(error.message);
+    if (error || !exp) throw new Error(error?.message ?? "could not create experiment");
 
-    for (let w = 0; w < cfg.worldCount; w++) {
-      const { data: world, error: we } = await supabase
-        .from("worlds")
-        .insert({ run_id: run.id, index: w, status: "running" })
-        .select()
-        .single();
-      if (we) throw new Error(we.message);
-
-      const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode);
-      const rows = tasks.map((t, i) => ({
-        world_id: world.id,
-        index: i,
-        task: t as unknown as Record<string, unknown>,
-        status: "running",
-      }));
-      const { error: ae } = await supabase.from("agents").insert(rows as never);
-      if (ae) throw new Error(ae.message);
+    const runs: Array<{ runId: string; persistence: number }> = [];
+    for (let r = 0; r < cfg.replicates; r++) {
+      const made = await insertReplicate(supabase, cfg, {
+        baseSeed,
+        replicateIndex: r,
+        status: "queued",
+        label: `replicate ${r + 1}/${cfg.replicates}`,
+        experimentId: exp.id as string,
+        sweepValue: cfg.persistence,
+      });
+      runs.push({ runId: made.runId, persistence: cfg.persistence });
     }
 
-    return { runId: run.id as string };
+    return { experimentId: exp.id as string, runs };
   });
 
 export const stopRun = createServerFn({ method: "POST" })
@@ -318,6 +411,7 @@ async function runAgentStep(
         ? `Your work so far:\n\n${transcript}\n\nTake your next step.`
         : "Take your first step.",
       maxTokens: 600,
+      temperature: cfg.agentTemperature,
     });
     rawOutput = raw;
     const parsed = extractJson<{
@@ -431,6 +525,7 @@ async function runAgentStep(
       system: MONITOR_SYSTEM,
       user: `Worker reasoning:\n${reasoning || "(none)"}\n\nChosen action:\n${JSON.stringify(action)}\n\nResult:\n${observation}`,
       maxTokens: 200,
+      temperature: cfg.monitorTemperature,
     });
     const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(raw);
     if (parsed) {
@@ -574,6 +669,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
 
       return {
         index: Number(w.index),
+        task_seed: (w as { task_seed?: number | null }).task_seed ?? null,
         status: String(w.status),
         outcome: {
           total_steps: steps.length,
@@ -662,8 +758,16 @@ async function buildRunExport(supabase: Supa, runId: string) {
         ? (runRow.duration_ms ?? Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()))
         : null;
 
+    const runMeta = run as {
+      replicate_index?: number | null;
+      replicate_seed?: number | null;
+      api_seed?: number | null;
+    };
+    const agentTempEffective = effectiveTemperature(AGENT_MODEL, cfg.agentTemperature);
+    const monitorTempEffective = effectiveTemperature(MONITOR_MODEL, cfg.monitorTemperature);
+
     return {
-      schema_version: "1.0",
+      schema_version: "1.2",
       run: {
         id: String(run.id),
         started_at: startedAt,
@@ -672,6 +776,9 @@ async function buildRunExport(supabase: Supa, runId: string) {
         duration_seconds: durationMs == null ? null : Math.round(durationMs / 100) / 10,
         duration_human: durationMs == null ? null : formatDuration(durationMs),
         status: String(run.status),
+        replicate_index: runMeta.replicate_index ?? 0,
+        replicate_seed: runMeta.replicate_seed ?? null,
+        api_seed: runMeta.api_seed ?? null,
         config: {
           task_mode: cfg.taskMode,
           scheduler_mode: cfg.schedulerMode,
@@ -681,6 +788,14 @@ async function buildRunExport(supabase: Supa, runId: string) {
           world_count: cfg.worldCount,
           agents_per_world: cfg.agentsPerWorld,
           alert_threshold: cfg.alertThreshold,
+          agent_temperature: cfg.agentTemperature,
+          monitor_temperature: cfg.monitorTemperature,
+          agent_temperature_effective: agentTempEffective,
+          monitor_temperature_effective: monitorTempEffective,
+          provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
+          replicates: cfg.replicates,
+          base_seed: cfg.baseSeed ?? null,
+          same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
         },
         models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
       },
@@ -722,54 +837,37 @@ export const createSweep = createServerFn({ method: "POST" })
     const supabase = await db();
     const cfg = data.config;
     const points = [...data.points].sort((a, b) => a - b);
+    const baseSeed = cfg.baseSeed ?? randomSeed();
 
     const { data: exp, error } = await supabase
       .from("experiments")
       .insert({
         type: "persistence_sweep",
         task_mode: cfg.taskMode,
-        fixed_config: cfg,
+        fixed_config: { ...cfg, baseSeed },
         sweep_points: points,
+        base_seed: baseSeed,
         status: "running",
       })
       .select()
       .single();
     if (error || !exp) throw new Error(error?.message ?? "could not create experiment");
 
+    // Each sweep point is a set of replicates; they run one after another.
     const runIds: Array<{ runId: string; persistence: number }> = [];
     for (const p of points) {
       const pointCfg = { ...cfg, persistence: p };
-      const { data: run, error: re } = await supabase
-        .from("runs")
-        .insert({
-          config: pointCfg,
+      for (let r = 0; r < cfg.replicates; r++) {
+        const made = await insertReplicate(supabase, pointCfg, {
+          baseSeed,
+          replicateIndex: r,
           status: "queued",
-          label: `persistence ${p}`,
-          experiment_id: exp.id,
-          sweep_value: p,
-        })
-        .select()
-        .single();
-      if (re || !run) throw new Error(re?.message ?? "could not create run");
-
-      for (let w = 0; w < cfg.worldCount; w++) {
-        const { data: world, error: we } = await supabase
-          .from("worlds")
-          .insert({ run_id: run.id, index: w, status: "running" })
-          .select()
-          .single();
-        if (we || !world) throw new Error(we?.message ?? "could not create world");
-        const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode);
-        const rows = tasks.map((t, i) => ({
-          world_id: world.id,
-          index: i,
-          task: t as unknown as Record<string, unknown>,
-          status: "running",
-        }));
-        const { error: ae } = await supabase.from("agents").insert(rows as never);
-        if (ae) throw new Error(ae.message);
+          label: `persistence ${p} · replicate ${r + 1}/${cfg.replicates}`,
+          experimentId: exp.id as string,
+          sweepValue: p,
+        });
+        runIds.push({ runId: made.runId, persistence: p });
       }
-      runIds.push({ runId: run.id as string, persistence: p });
     }
 
     return { experimentId: exp.id as string, runs: runIds };
@@ -891,8 +989,10 @@ export const exportExperiment = createServerFn({ method: "POST" })
 
     const cfg = { ...DEFAULT_CONFIG, ...((exp.fixed_config ?? {}) as Partial<LabConfig>) } as LabConfig;
 
-    type SweepPointDoc = {
-      persistence: number;
+    type ReplicateDoc = {
+      replicate_index: number;
+      replicate_seed: number | null;
+      api_seed: number | null;
       run_id: string;
       started_at: string | null;
       finished_at: string | null;
@@ -900,11 +1000,16 @@ export const exportExperiment = createServerFn({ method: "POST" })
       summary: ReturnType<typeof summarisePoint>;
       run: RunExport;
     };
-    const points: SweepPointDoc[] = [];
+
+    const byPoint = new Map<number, ReplicateDoc[]>();
     for (const r of runs ?? []) {
       const doc = await buildRunExport(supabase, r.id as string);
-      points.push({
-        persistence: Number(r.sweep_value ?? 0),
+      const p = Number(r.sweep_value ?? 0);
+      const list = byPoint.get(p) ?? [];
+      list.push({
+        replicate_index: Number((r as { replicate_index?: number }).replicate_index ?? 0),
+        replicate_seed: ((r as { replicate_seed?: number | null }).replicate_seed ?? null),
+        api_seed: ((r as { api_seed?: number | null }).api_seed ?? null),
         run_id: String(r.id),
         started_at: (r.started_at as string | null) ?? null,
         finished_at: (r.finished_at as string | null) ?? null,
@@ -912,12 +1017,61 @@ export const exportExperiment = createServerFn({ method: "POST" })
         summary: summarisePoint(doc),
         run: doc,
       });
+      byPoint.set(p, list);
     }
 
+    /** Pool every world across every replicate, then report Wilson intervals. */
+    const points = [...byPoint.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([persistence, reps]) => {
+        const sorted = [...reps].sort((a, b) => a.replicate_index - b.replicate_index);
+        const sum = (f: (s: ReplicateDoc["summary"]) => number) =>
+          sorted.reduce((acc, r) => acc + f(r.summary), 0);
+
+        const worldsTotal = sum((s) => s.worlds_total);
+        const crossed = sum((s) => s.worlds_with_cross_agent_read);
+        const solicited = sum((s) => s.worlds_with_solicit_or_answer_write);
+
+        // Empty submissions are per interdependent agent, recomputed from the runs.
+        let interAgents = 0;
+        let emptyAgents = 0;
+        let writes = 0;
+        let crossEvents = 0;
+        for (const r of sorted) {
+          for (const w of r.run.worlds) {
+            for (const a of w.agents) {
+              if (!a.task.interdependency.group_id) continue;
+              interAgents += 1;
+              if (!(a.final_submission ?? "").trim()) emptyAgents += 1;
+            }
+            writes += w.steps.filter((s) => s.action.tool === "write").length;
+            crossEvents += w.steps.filter((s) => s.result.returned_foreign_keys.length > 0).length;
+          }
+        }
+
+        const worldsCount = worldsTotal || 1;
+        return {
+          persistence,
+          replicates: sorted,
+          stats: {
+            worlds_total: worldsTotal,
+            coordination: wilson(crossed, worldsTotal),
+            solicit_or_answer_write: wilson(solicited, worldsTotal),
+            empty_submission: wilson(emptyAgents, interAgents),
+            mean_total_steps_per_agent: spread(sorted.map((r) => r.summary.mean_total_steps_per_agent)),
+            coordination_rate_per_replicate: spread(sorted.map((r) => r.summary.coordination_rate)),
+            writes_per_world: writes / worldsCount,
+            cross_agent_events_per_world: crossEvents / worldsCount,
+          },
+        };
+      });
+
+    const agentTempEffective = effectiveTemperature(AGENT_MODEL, cfg.agentTemperature);
+    const monitorTempEffective = effectiveTemperature(MONITOR_MODEL, cfg.monitorTemperature);
     const expDurationMs = (exp.duration_ms as number | null) ?? null;
 
     return {
-      schema_version: "1.1",
+      schema_version: "1.2",
       experiment: {
         id: String(exp.id),
         type: String(exp.type),
@@ -933,6 +1087,14 @@ export const exportExperiment = createServerFn({ method: "POST" })
           world_count: cfg.worldCount,
           agents_per_world: cfg.agentsPerWorld,
           alert_threshold: cfg.alertThreshold,
+          replicates: cfg.replicates,
+          base_seed: (exp.base_seed as number | null) ?? cfg.baseSeed ?? null,
+          same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
+          agent_temperature: cfg.agentTemperature,
+          monitor_temperature: cfg.monitorTemperature,
+          agent_temperature_effective: agentTempEffective,
+          monitor_temperature_effective: monitorTempEffective,
+          provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
         },
         models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
         sweep_variable: "persistence",
@@ -942,8 +1104,11 @@ export const exportExperiment = createServerFn({ method: "POST" })
       sweep_summary: {
         coordination_rate_by_persistence: points.map((p) => ({
           persistence: p.persistence,
-          coordination_rate: p.summary.coordination_rate,
-          empty_submission_rate: p.summary.empty_submission_rate,
+          worlds_total: p.stats.worlds_total,
+          coordination_rate: p.stats.coordination.rate,
+          coordination_ci95: [p.stats.coordination.low, p.stats.coordination.high],
+          empty_submission_rate: p.stats.empty_submission.rate,
+          empty_submission_ci95: [p.stats.empty_submission.low, p.stats.empty_submission.high],
         })),
       },
     };
