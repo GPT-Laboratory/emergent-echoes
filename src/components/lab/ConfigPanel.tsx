@@ -109,6 +109,17 @@ export function ConfigPanel({
         onChange={(v) => onChange({ agentsPerWorld: v })}
       />
       <Knob
+        label="Replicates"
+        hint="Independent repetitions of this exact configuration. Rates are pooled across replicates and reported with a 95% Wilson interval."
+        value={config.replicates}
+        display={`${config.replicates} × ${config.worldCount} = ${config.replicates * config.worldCount} worlds`}
+        min={1}
+        max={10}
+        step={1}
+        disabled={disabled ?? false}
+        onChange={(v) => onChange({ replicates: v })}
+      />
+      <Knob
         label="Alert threshold"
         hint="Monitor severity at or above which a human-review countdown starts."
         value={config.alertThreshold}
@@ -119,6 +130,27 @@ export function ConfigPanel({
         disabled={disabled ?? false}
         onChange={(v) => onChange({ alertThreshold: v })}
       />
+
+      <div className="space-y-2">
+        <label className="flex items-start gap-2 text-xs leading-snug text-muted-foreground">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-[var(--primary)]"
+            checked={config.sameTasksAcrossReplicates}
+            disabled={disabled ?? false}
+            onChange={(e) => onChange({ sameTasksAcrossReplicates: e.target.checked })}
+          />
+          <span>
+            <span className="label-caps block text-foreground">Same tasks across replicates</span>
+            Off by default, so replicates draw different task instances and results generalise over tasks. On isolates
+            model randomness alone.
+          </span>
+        </label>
+        <p className="font-mono text-[11px] text-muted-foreground">
+          temperature · agent {config.agentTemperature.toFixed(1)} · monitor {config.monitorTemperature.toFixed(1)} ·
+          fixed and recorded, not tuned
+        </p>
+      </div>
     </div>
   );
 }
