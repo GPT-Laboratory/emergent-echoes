@@ -46,8 +46,37 @@ type Row = {
   experiment_id: string | null;
   sweep_value: number | null;
   worlds: number;
+  worldsDone: number;
   emerged: number;
 };
+
+/** At-a-glance state: live runs show world progress, finished runs their duration. */
+function StatusChip({ run }: { run: Row }) {
+  const running = run.status === "running";
+  return (
+    <span
+      className={[
+        "ml-2 inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest",
+        running
+          ? "border-warning/50 bg-warning/10 text-warning"
+          : run.status === "complete"
+            ? "border-primary/60 bg-primary/15 text-primary"
+            : "border-border bg-muted/40 text-muted-foreground",
+      ].join(" ")}
+    >
+      {running ? (
+        <>
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+          running {run.worldsDone}/{run.worlds}
+        </>
+      ) : run.status === "complete" ? (
+        <>✓ complete{run.duration_ms != null ? ` · ${formatDuration(run.duration_ms)}` : ""}</>
+      ) : (
+        run.status
+      )}
+    </span>
+  );
+}
 
 type GroupItem =
   | {
@@ -156,7 +185,9 @@ function Runs() {
         .select("id,created_at,label,status,config,started_at,finished_at,duration_ms,experiment_id,sweep_value")
         .order("created_at", { ascending: false })
         .limit(50);
-      const { data: worlds } = await supabase.from("worlds").select("run_id,cross_agent_read,solicit_write");
+      const { data: worlds } = await supabase
+        .from("worlds")
+        .select("run_id,status,cross_agent_read,solicit_write");
       setRows(
         (runs ?? []).map((r) => {
           const ws = (worlds ?? []).filter((w) => w.run_id === r.id);
@@ -164,6 +195,7 @@ function Runs() {
             ...r,
             config: r.config as LabConfig,
             worlds: ws.length,
+            worldsDone: ws.filter((w) => w.status !== "running").length,
             emerged: ws.filter((w) => w.cross_agent_read || w.solicit_write).length,
           };
         }),
@@ -268,7 +300,7 @@ function Runs() {
                           {openRow === item.run.id ? "▾" : "▸"}
                         </button>
                         {new Date(item.run.created_at).toLocaleString()}
-                        <span className="ml-2 text-muted-foreground">{item.run.status}</span>
+                        <StatusChip run={item.run} />
                       </td>
                       <td className="px-3 py-2 font-mono">
                         {new Date(item.run.started_at ?? item.run.created_at).toLocaleString()}
