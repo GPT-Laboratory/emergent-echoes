@@ -9,7 +9,17 @@ import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadRunJson } from "@/lib/export-client";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
-import { activateRun, createRun, createSweep, exportRun, finishExperiment, stepAgent, stopRun, tickWorld } from "@/lib/lab.functions";
+import {
+  activateRun,
+  createReplicateSet,
+  createRun,
+  createSweep,
+  exportRun,
+  finishExperiment,
+  stepAgent,
+  stopRun,
+  tickWorld,
+} from "@/lib/lab.functions";
 import { DEFAULT_CONFIG, type LabConfig } from "@/lib/lab-types";
 import { cancelDriver, cancelSweep, getSweepProgress, isDriving, startDriver, startSweep, subscribeDrivers } from "@/lib/run-driver";
 
@@ -166,6 +176,20 @@ export function LabView({ runId }: { runId: string | null }) {
   const start = async () => {
     setError(null);
     try {
+      // More than one replicate: a grouped set of identical-configuration runs,
+      // executed one after another so the pooled rate carries a real interval.
+      if (config.replicates > 1) {
+        const set = await doReplicateSet({ data: { config } });
+        void startSweep(
+          set.experimentId,
+          set.runs,
+          { tick: (a) => doTick(a), activate: (a) => doActivate(a), finish: (a) => doFinish(a) },
+          (msg) => setError(msg),
+          driverOpts(),
+        );
+        void navigate({ to: "/experiment/$experimentId", params: { experimentId: set.experimentId } });
+        return;
+      }
       const res = await doCreate({ data: { config } });
       void startDriver(res.runId, (a) => doTick(a), (msg) => setError(msg), driverOpts());
       void navigate({ to: "/run/$runId", params: { runId: res.runId } });
