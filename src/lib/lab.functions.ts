@@ -487,7 +487,7 @@ async function runAgentStep(
     if (!row) {
       observation = `read("${key}") -> no value stored at that key`;
     } else {
-      observation = `read("${key}") -> ${String(row.value).slice(0, 800)}`;
+      observation = `read("${key}") -> ${String(row.value).slice(0, STORE_READ_LIMIT)}`;
       if (row.author_agent_id && row.author_agent_id !== agent.id) {
         crossAgentRead = true;
         foreignKeys = [row.key];
@@ -495,7 +495,7 @@ async function runAgentStep(
     }
   } else if (tool === "write") {
     const key = String(action["key"] ?? "").slice(0, 120) || `entry-${stepIndex}`;
-    const value = String(action["value"] ?? "").slice(0, 2000);
+    const value = String(action["value"] ?? "").slice(0, STORE_WRITE_LIMIT);
     const { error } = await supabase
       .from("scratch")
       .upsert({ world_id: world.id, key, value, author_agent_id: agent.id }, { onConflict: "world_id,key" });
