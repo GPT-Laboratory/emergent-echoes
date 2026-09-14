@@ -2,8 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import {
-  AGENT_MODEL,
-  MONITOR_MODEL,
   PROVIDER_DEFAULT_TEMPERATURE,
   chat,
   effectiveTemperature,
@@ -428,7 +426,7 @@ async function runAgentStep(
 
   try {
     const raw = await chat({
-      model: AGENT_MODEL,
+      model: agentModelOf(cfg),
       system: agentSystemPrompt(agent.task, cfg, stepsLeft),
       user: transcript
         ? `Your work so far:\n\n${transcript}\n\nTake your next step.`
@@ -545,7 +543,7 @@ async function runAgentStep(
   let note: string | null = null;
   try {
     const raw = await chat({
-      model: MONITOR_MODEL,
+      model: MONITOR_MODEL_ID,
       system: MONITOR_SYSTEM,
       user: `Worker reasoning:\n${reasoning || "(none)"}\n\nChosen action:\n${JSON.stringify(action)}\n\nResult:\n${observation}`,
       maxTokens: 200,
@@ -788,8 +786,8 @@ async function buildRunExport(supabase: Supa, runId: string) {
       replicate_seed?: number | null;
       api_seed?: number | null;
     };
-    const agentTempEffective = effectiveTemperature(AGENT_MODEL, cfg.agentTemperature);
-    const monitorTempEffective = effectiveTemperature(MONITOR_MODEL, cfg.monitorTemperature);
+    const agentTempEffective = effectiveTemperature(agentModelOf(cfg), cfg.agentTemperature);
+    const monitorTempEffective = effectiveTemperature(MONITOR_MODEL_ID, cfg.monitorTemperature);
 
     return {
       schema_version: "1.2",
@@ -823,8 +821,8 @@ async function buildRunExport(supabase: Supa, runId: string) {
           provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
           agent_reasoning_effort: cfg.agentReasoningEffort,
           monitor_reasoning_effort: cfg.monitorReasoningEffort,
-          agent_reasoning_effort_effective: effectiveReasoningEffort(AGENT_MODEL, cfg.agentReasoningEffort),
-          monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL, cfg.monitorReasoningEffort),
+          agent_reasoning_effort_effective: effectiveReasoningEffort(agentModelOf(cfg), cfg.agentReasoningEffort),
+          monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL_ID, cfg.monitorReasoningEffort),
           reasoning_effort_locked: true,
           reasoning_effort_note:
             "Sent explicitly on every model call and held constant for all steps. 'gateway-default' would mean the model rejected the parameter and the gateway default applied.",
@@ -832,7 +830,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
           base_seed: cfg.baseSeed ?? null,
           same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
         },
-        models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
+        models: { agent_model: agentModelOf(cfg), monitor_model: MONITOR_MODEL_ID },
       },
       worlds: worldsOut,
       aggregate: {
@@ -1109,8 +1107,8 @@ export const exportExperiment = createServerFn({ method: "POST" })
         };
       });
 
-    const agentTempEffective = effectiveTemperature(AGENT_MODEL, cfg.agentTemperature);
-    const monitorTempEffective = effectiveTemperature(MONITOR_MODEL, cfg.monitorTemperature);
+    const agentTempEffective = effectiveTemperature(agentModelOf(cfg), cfg.agentTemperature);
+    const monitorTempEffective = effectiveTemperature(MONITOR_MODEL_ID, cfg.monitorTemperature);
     const expDurationMs = (exp.duration_ms as number | null) ?? null;
 
     return {
@@ -1140,13 +1138,13 @@ export const exportExperiment = createServerFn({ method: "POST" })
           provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
           agent_reasoning_effort: cfg.agentReasoningEffort,
           monitor_reasoning_effort: cfg.monitorReasoningEffort,
-          agent_reasoning_effort_effective: effectiveReasoningEffort(AGENT_MODEL, cfg.agentReasoningEffort),
-          monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL, cfg.monitorReasoningEffort),
+          agent_reasoning_effort_effective: effectiveReasoningEffort(agentModelOf(cfg), cfg.agentReasoningEffort),
+          monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL_ID, cfg.monitorReasoningEffort),
           reasoning_effort_locked: true,
           reasoning_effort_note:
             "Sent explicitly on every model call and held constant for all steps and all sweep points. 'gateway-default' would mean the model rejected the parameter and the gateway default applied.",
         },
-        models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
+        models: { agent_model: agentModelOf(cfg), monitor_model: MONITOR_MODEL_ID },
         sweep_variable: "persistence",
         sweep_points: (exp.sweep_points ?? []) as number[],
         seed_policy: {
