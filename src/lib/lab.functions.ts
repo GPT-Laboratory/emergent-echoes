@@ -779,6 +779,9 @@ async function buildRunExport(supabase: Supa, runId: string) {
         replicate_index: runMeta.replicate_index ?? 0,
         replicate_seed: runMeta.replicate_seed ?? null,
         api_seed: runMeta.api_seed ?? null,
+        api_seed_supported: false,
+        api_seed_note:
+          "The model provider exposes no request-level seed, so api_seed is null by design; model sampling is not reproducible.",
         config: {
           task_mode: cfg.taskMode,
           scheduler_mode: cfg.schedulerMode,
@@ -983,7 +986,8 @@ export const exportExperiment = createServerFn({ method: "POST" })
 
     const { data: runs } = await supabase
       .from("runs")
-      .select("id,sweep_value,started_at,finished_at,duration_ms")
+      .select("id,sweep_value,started_at,finished_at,duration_ms,replicate_index,replicate_seed,api_seed")
+      .order("replicate_index")
       .eq("experiment_id", data.experimentId)
       .order("sweep_value");
 
@@ -1050,18 +1054,25 @@ export const exportExperiment = createServerFn({ method: "POST" })
         }
 
         const worldsCount = worldsTotal || 1;
+        /** JSON turns NaN/Infinity into null, so clamp every rate to a finite number. */
+        const num = (v: number) => (Number.isFinite(v) ? v : 0);
+        const ci = (k: number, n: number) => {
+          const w = wilson(k, n);
+          return { k: w.k, n: w.n, rate: num(w.rate), ci95: [num(w.low), num(w.high)] as [number, number] };
+        };
         return {
           persistence,
           replicates: sorted,
           stats: {
             worlds_total: worldsTotal,
-            coordination: wilson(crossed, worldsTotal),
-            solicit_or_answer_write: wilson(solicited, worldsTotal),
-            empty_submission: wilson(emptyAgents, interAgents),
+            replicates_total: sorted.length,
+            coordination: ci(crossed, worldsTotal),
+            solicit_or_answer_write: ci(solicited, worldsTotal),
+            empty_submission: ci(emptyAgents, interAgents),
             mean_total_steps_per_agent: spread(sorted.map((r) => r.summary.mean_total_steps_per_agent)),
             coordination_rate_per_replicate: spread(sorted.map((r) => r.summary.coordination_rate)),
-            writes_per_world: writes / worldsCount,
-            cross_agent_events_per_world: crossEvents / worldsCount,
+            writes_per_world: num(writes / worldsCount),
+            cross_agent_events_per_world: num(crossEvents / worldsCount),
           },
         };
       });
@@ -1099,6 +1110,12 @@ export const exportExperiment = createServerFn({ method: "POST" })
         models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
         sweep_variable: "persistence",
         sweep_points: (exp.sweep_points ?? []) as number[],
+        seed_policy: {
+          replicate_seed: "base_seed + replicate_index; drives per-world task_seed",
+          api_seed_supported: false,
+          api_seed_note:
+            "The model provider exposes no request-level seed, so api_seed is null by design; model sampling is not reproducible.",
+        },
       },
       points,
       sweep_summary: {
@@ -1106,9 +1123,9 @@ export const exportExperiment = createServerFn({ method: "POST" })
           persistence: p.persistence,
           worlds_total: p.stats.worlds_total,
           coordination_rate: p.stats.coordination.rate,
-          coordination_ci95: [p.stats.coordination.low, p.stats.coordination.high],
+          coordination_ci95: p.stats.coordination.ci95,
           empty_submission_rate: p.stats.empty_submission.rate,
-          empty_submission_ci95: [p.stats.empty_submission.low, p.stats.empty_submission.high],
+          empty_submission_ci95: p.stats.empty_submission.ci95,
         })),
       },
     };
