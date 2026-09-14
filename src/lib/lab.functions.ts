@@ -983,7 +983,8 @@ export const exportExperiment = createServerFn({ method: "POST" })
 
     const { data: runs } = await supabase
       .from("runs")
-      .select("id,sweep_value,started_at,finished_at,duration_ms")
+      .select("id,sweep_value,started_at,finished_at,duration_ms,replicate_index,replicate_seed,api_seed")
+      .order("replicate_index")
       .eq("experiment_id", data.experimentId)
       .order("sweep_value");
 
