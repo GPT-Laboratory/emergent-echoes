@@ -1237,16 +1237,29 @@ function summarisePoint(runDoc: RunExport) {
 
 /** Minimal structural shape of an exported world, so stats work on any export path. */
 type StatWorld = {
-  outcome: { cross_agent_read_emerged: boolean; exposure_emerged?: boolean; solicit_or_answer_write: boolean };
+  outcome: {
+    cross_agent_read_emerged: boolean;
+    exposure_emerged?: boolean;
+    solicit_or_answer_write: boolean;
+    any_write?: boolean;
+    pair_correct_count?: number;
+    pair_agents_total?: number;
+    max_awareness?: string;
+    estimated_cost_usd?: number | null;
+    tokens?: TokenTotals;
+  };
   agents: ReadonlyArray<{
     index: number;
     task: { interdependency: { group_id?: string | null } };
     final_submission?: string | null;
+    submission_correct?: boolean | null;
+    hit_step_ceiling?: boolean;
   }>;
   steps: ReadonlyArray<{
     agent_index: number | null;
     action: { tool: string };
     result: { returned_foreign_keys: ReadonlyArray<string> };
+    awareness?: { label?: string | null };
   }>;
 };
 
