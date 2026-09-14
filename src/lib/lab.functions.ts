@@ -779,6 +779,9 @@ async function buildRunExport(supabase: Supa, runId: string) {
         replicate_index: runMeta.replicate_index ?? 0,
         replicate_seed: runMeta.replicate_seed ?? null,
         api_seed: runMeta.api_seed ?? null,
+        api_seed_supported: false,
+        api_seed_note:
+          "The model provider exposes no request-level seed, so api_seed is null by design; model sampling is not reproducible.",
         config: {
           task_mode: cfg.taskMode,
           scheduler_mode: cfg.schedulerMode,
