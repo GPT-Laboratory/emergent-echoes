@@ -669,6 +669,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
 
       return {
         index: Number(w.index),
+        task_seed: (w as { task_seed?: number | null }).task_seed ?? null,
         status: String(w.status),
         outcome: {
           total_steps: steps.length,
@@ -757,8 +758,16 @@ async function buildRunExport(supabase: Supa, runId: string) {
         ? (runRow.duration_ms ?? Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()))
         : null;
 
+    const runMeta = run as {
+      replicate_index?: number | null;
+      replicate_seed?: number | null;
+      api_seed?: number | null;
+    };
+    const agentTempEffective = effectiveTemperature(AGENT_MODEL, cfg.agentTemperature);
+    const monitorTempEffective = effectiveTemperature(MONITOR_MODEL, cfg.monitorTemperature);
+
     return {
-      schema_version: "1.0",
+      schema_version: "1.2",
       run: {
         id: String(run.id),
         started_at: startedAt,
@@ -767,6 +776,9 @@ async function buildRunExport(supabase: Supa, runId: string) {
         duration_seconds: durationMs == null ? null : Math.round(durationMs / 100) / 10,
         duration_human: durationMs == null ? null : formatDuration(durationMs),
         status: String(run.status),
+        replicate_index: runMeta.replicate_index ?? 0,
+        replicate_seed: runMeta.replicate_seed ?? null,
+        api_seed: runMeta.api_seed ?? null,
         config: {
           task_mode: cfg.taskMode,
           scheduler_mode: cfg.schedulerMode,
@@ -776,6 +788,14 @@ async function buildRunExport(supabase: Supa, runId: string) {
           world_count: cfg.worldCount,
           agents_per_world: cfg.agentsPerWorld,
           alert_threshold: cfg.alertThreshold,
+          agent_temperature: cfg.agentTemperature,
+          monitor_temperature: cfg.monitorTemperature,
+          agent_temperature_effective: agentTempEffective,
+          monitor_temperature_effective: monitorTempEffective,
+          provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
+          replicates: cfg.replicates,
+          base_seed: cfg.baseSeed ?? null,
+          same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
         },
         models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
       },
