@@ -46,8 +46,37 @@ type Row = {
   experiment_id: string | null;
   sweep_value: number | null;
   worlds: number;
+  worldsDone: number;
   emerged: number;
 };
+
+/** At-a-glance state: live runs show world progress, finished runs their duration. */
+function StatusChip({ run }: { run: Row }) {
+  const running = run.status === "running";
+  return (
+    <span
+      className={[
+        "ml-2 inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest",
+        running
+          ? "border-warning/50 bg-warning/10 text-warning"
+          : run.status === "complete"
+            ? "border-primary/60 bg-primary/15 text-primary"
+            : "border-border bg-muted/40 text-muted-foreground",
+      ].join(" ")}
+    >
+      {running ? (
+        <>
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
+          running {run.worldsDone}/{run.worlds}
+        </>
+      ) : run.status === "complete" ? (
+        <>✓ complete{run.duration_ms != null ? ` · ${formatDuration(run.duration_ms)}` : ""}</>
+      ) : (
+        run.status
+      )}
+    </span>
+  );
+}
 
 type GroupItem =
   | {
