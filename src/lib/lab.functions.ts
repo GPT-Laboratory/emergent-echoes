@@ -674,6 +674,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
         status: String(run.status),
         config: {
           task_mode: cfg.taskMode,
+          scheduler_mode: cfg.schedulerMode,
           reasoning_budget_steps: cfg.reasoningBudget,
           task_difficulty: cfg.difficulty,
           persistence: cfg.persistence,
