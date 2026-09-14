@@ -421,6 +421,7 @@ async function runAgentStep(
         : "Take your first step.",
       maxTokens: 600,
       temperature: cfg.agentTemperature,
+      reasoningEffort: cfg.agentReasoningEffort,
     });
     rawOutput = raw;
     const parsed = extractJson<{
