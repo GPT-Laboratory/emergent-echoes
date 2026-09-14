@@ -1114,9 +1114,9 @@ export const exportExperiment = createServerFn({ method: "POST" })
           persistence: p.persistence,
           worlds_total: p.stats.worlds_total,
           coordination_rate: p.stats.coordination.rate,
-          coordination_ci95: [p.stats.coordination.low, p.stats.coordination.high],
+          coordination_ci95: p.stats.coordination.ci95,
           empty_submission_rate: p.stats.empty_submission.rate,
-          empty_submission_ci95: [p.stats.empty_submission.low, p.stats.empty_submission.high],
+          empty_submission_ci95: p.stats.empty_submission.ci95,
         })),
       },
     };
