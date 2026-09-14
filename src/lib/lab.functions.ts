@@ -27,7 +27,7 @@ import {
   storeAvailable,
   type LabConfig,
 } from "./lab-types";
-import { deriveSeed, randomSeed } from "./rng";
+import { deriveSeed, makeRng, randomSeed } from "./rng";
 import { spread, wilson } from "./stats";
 
 /** Characters a read() observation returns, and a write() stores. Recorded in every export. */
