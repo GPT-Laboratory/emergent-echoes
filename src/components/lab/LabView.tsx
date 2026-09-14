@@ -167,7 +167,7 @@ export function LabView({ runId }: { runId: string | null }) {
     setError(null);
     try {
       const res = await doCreate({ data: { config } });
-      void startDriver(res.runId, (a) => doTick(a), (msg) => setError(msg));
+      void startDriver(res.runId, (a) => doTick(a), (msg) => setError(msg), driverOpts());
       void navigate({ to: "/run/$runId", params: { runId: res.runId } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
