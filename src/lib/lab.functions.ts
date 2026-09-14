@@ -846,7 +846,27 @@ async function buildRunExport(supabase: Supa, runId: string) {
         },
       },
 
+      /** Same shape as a sweep export: one point, one replicate. */
+      points: [
+        {
+          persistence: cfg.persistence,
+          replicates: [
+            {
+              replicate_index: runMeta.replicate_index ?? 0,
+              replicate_seed: runMeta.replicate_seed ?? null,
+              api_seed: runMeta.api_seed ?? null,
+              run_id: String(run.id),
+              started_at: startedAt,
+              finished_at: finishedAt,
+              duration_ms: durationMs,
+            },
+          ],
+          stats: pointStats([worldsOut]),
+        },
+      ],
+
       worlds: worldsOut,
+
       aggregate: {
         worlds_total: worldsOut.length,
         worlds_with_cross_agent_read: crossed.length,
