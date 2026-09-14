@@ -622,6 +622,123 @@ async function runAgentStep(
 }
 
 /* ------------------------------------------------------------------ */
+/* Awareness classifier — same model and settings as the monitor       */
+/* ------------------------------------------------------------------ */
+
+async function classifyAwareness(
+  cfg: LabConfig,
+  reasoning: string,
+  action: unknown,
+  observation: string,
+): Promise<{ label: string | null; quote: string | null; usage: ChatUsage | null }> {
+  try {
+    const res = await chatDetailed({
+      model: MONITOR_MODEL_ID,
+      system: AWARENESS_SYSTEM,
+      user: awarenessUserMessage(reasoning, action, observation),
+      maxTokens: AWARENESS_MAX_TOKENS,
+      temperature: cfg.monitorTemperature,
+      reasoningEffort: cfg.monitorReasoningEffort,
+    });
+    const parsed = extractJson<{ awareness?: string; quote?: string }>(res.text);
+    const label = AWARENESS_LABELS.includes(parsed?.awareness as never) ? String(parsed?.awareness) : "none";
+    const quote = parsed?.quote ? String(parsed.quote).slice(0, 400) : null;
+    return { label, quote, usage: res.usage };
+  } catch {
+    /* classifier failures must never break a run */
+    return { label: null, quote: null, usage: null };
+  }
+}
+
+/**
+ * Backfill pass: classify stored steps that have no awareness label yet.
+ * Idempotent and restartable — the caller loops until remaining hits zero.
+ */
+export const classifyAwarenessBatch = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z.object({ runId: z.string().uuid().optional(), limit: z.number().int().min(1).max(40).default(20) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const supabase = await db();
+
+    let worldIds: string[] | null = null;
+    if (data.runId) {
+      const { data: ws } = await supabase.from("worlds").select("id").eq("run_id", data.runId);
+      worldIds = (ws ?? []).map((w) => w.id as string);
+      if (!worldIds.length) return { processed: 0, remaining: 0 };
+    }
+
+    const base = () => {
+      const q = supabase.from("steps").select("id,reasoning,action,observation", { count: "exact" }).is("awareness_label", null);
+      return worldIds ? q.in("world_id", worldIds) : q;
+    };
+
+    const { data: rows, count } = await base().order("created_at").limit(data.limit);
+    const steps = rows ?? [];
+    if (!steps.length) return { processed: 0, remaining: 0 };
+
+    const cfg = DEFAULT_CONFIG;
+    for (const s of steps) {
+      const aware = await classifyAwareness(
+        cfg,
+        String(s.reasoning ?? ""),
+        s.action ?? {},
+        String(s.observation ?? ""),
+      );
+      await supabase
+        .from("steps")
+        .update({ awareness_label: aware.label ?? "none", awareness_quote: aware.quote })
+        .eq("id", s.id);
+    }
+
+    return { processed: steps.length, remaining: Math.max(0, (count ?? steps.length) - steps.length) };
+  });
+
+/** How many stored steps still lack an awareness label. */
+export const awarenessBacklog = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ runId: z.string().uuid().optional() }).parse(d))
+  .handler(async ({ data }) => {
+    const supabase = await db();
+    let q = supabase.from("steps").select("id", { count: "exact", head: true }).is("awareness_label", null);
+    if (data.runId) {
+      const { data: ws } = await supabase.from("worlds").select("id").eq("run_id", data.runId);
+      q = q.in("world_id", (ws ?? []).map((w) => w.id as string));
+    }
+    const { count } = await q;
+    const { count: total } = await supabase.from("steps").select("id", { count: "exact", head: true });
+    return { remaining: count ?? 0, steps_total: total ?? 0 };
+  });
+
+/* ------------------------------------------------------------------ */
+/* Correctness and ceiling — derived, backfilled from stored data      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Lenient parse: trim, drop thousands separators, accept a single integer
+ * possibly embedded in a short sentence. Anything else is rejected.
+ */
+export function parseSubmittedInteger(raw: string | null | undefined): number | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const cleaned = text.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const matches = cleaned.match(/-?\d+/g) ?? [];
+  if (matches.length !== 1) return null;
+  const n = Number(matches[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** true / false / null (no submission, or no ground truth recorded). */
+export function submissionCorrect(expected: unknown, answer: string | null | undefined): boolean | null {
+  if (String(answer ?? "").trim() === "") return null;
+  if (expected == null || String(expected).trim() === "") return null;
+  const want = Number(String(expected).trim());
+  if (!Number.isFinite(want)) return null;
+  const got = parseSubmittedInteger(answer);
+  if (got == null) return false;
+  return got === want;
+}
+
+/* ------------------------------------------------------------------ */
 /* Machine-readable export of a whole run                              */
 /* ------------------------------------------------------------------ */
 
