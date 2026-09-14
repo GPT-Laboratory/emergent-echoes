@@ -6,11 +6,13 @@ import {
   AGENT_MODEL_ID,
   MONITOR_MODEL_ID,
   PROVIDER_FIXED_TEMPERATURE,
+  anthropicApiId,
   normalizeEffortForModel,
   reasoningEffortSupported,
   temperatureSupported,
   type ReasoningEffort,
 } from "./lab-types";
+
 
 export { effectiveReasoningEffort } from "./lab-types";
 
@@ -37,6 +39,100 @@ export class GatewayError extends Error {
   }
 }
 
+/**
+ * Models observed at runtime to reject `output_config.effort`. Recorded so the
+ * export can say "provider-fixed" instead of silently claiming a locked effort.
+ */
+const EFFORT_REJECTED = new Set<string>();
+export function effortRejected(modelId: string): boolean {
+  return EFFORT_REJECTED.has(modelId);
+}
+
+async function postWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let res: Response | null = null;
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      res = await fetch(url, { ...init, signal: AbortSignal.timeout(45_000) });
+    } catch (e) {
+      lastErr = e;
+      res = null;
+    }
+    // Retry transient network failures and gateway congestion.
+    if (res && !(res.status === 429 || res.status >= 500)) break;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+  }
+  if (!res) {
+    throw new GatewayError(0, lastErr instanceof Error ? lastErr.message : "Network error contacting model");
+  }
+  return res;
+}
+
+/**
+ * Anthropic Claude via the Messages API. Reasoning effort is `output_config.effort`;
+ * temperature is sent explicitly, as for Gemini. No `thinking`, no `budget_tokens`.
+ */
+async function chatAnthropic(opts: {
+  model: string;
+  system: string;
+  user: string;
+  maxTokens: number;
+  temperature?: number | undefined;
+  effort: ReasoningEffort;
+}): Promise<string> {
+  const key = process.env["ANTHROPIC_API_KEY"];
+  if (!key) throw new Error("Missing ANTHROPIC_API_KEY");
+  const apiModel = anthropicApiId(opts.model);
+
+  const build = (withEffort: boolean) =>
+    JSON.stringify({
+      model: apiModel,
+      max_tokens: Math.max(opts.maxTokens, 4096),
+      ...(withEffort ? { output_config: { effort: opts.effort } } : {}),
+      ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+      system: opts.system,
+      messages: [{ role: "user", content: opts.user }],
+    });
+
+  const headers = {
+    "Content-Type": "application/json",
+    "x-api-key": key,
+    "anthropic-version": "2023-06-01",
+  };
+
+  let res = await postWithRetry("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers,
+    body: build(!effortRejected(opts.model)),
+  });
+
+  // A model that refuses output_config.effort is recorded, never silently dropped.
+  if (res.status === 400 && !effortRejected(opts.model)) {
+    const text = await res.text().catch(() => "");
+    if (/output_config|effort/i.test(text)) {
+      EFFORT_REJECTED.add(opts.model);
+      res = await postWithRetry("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers,
+        body: build(false),
+      });
+    } else {
+      throw new GatewayError(400, text.slice(0, 400));
+    }
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new GatewayError(res.status, text.slice(0, 400) || res.statusText);
+  }
+
+  const data = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
+  return (data.content ?? [])
+    .filter((b) => b?.type === "text" && typeof b.text === "string")
+    .map((b) => b.text)
+    .join("\n");
+}
+
 export async function chat(opts: {
   model: string;
   system: string;
@@ -46,12 +142,6 @@ export async function chat(opts: {
   /** Locked per experiment; identical on every step. Never left to the gateway. */
   reasoningEffort?: ReasoningEffort;
 }): Promise<string> {
-  const key = process.env["LOVABLE_API_KEY"];
-  if (!key) throw new Error("Missing LOVABLE_API_KEY");
-
-  // GPT-5/6-family models take max_completion_tokens (never max_tokens),
-  // reject non-default temperature, and gpt-6-astra requires a reasoning effort.
-  const isOpenAiReasoning = opts.model.startsWith("openai/");
   const limit = opts.maxTokens ?? 700;
   const canSetTemperature = temperatureSupported(opts.model) && opts.temperature != null;
 
@@ -60,6 +150,24 @@ export async function chat(opts: {
   const requestedEffort: ReasoningEffort = opts.reasoningEffort ?? "low";
   const effort = normalizeEffortForModel(opts.model, requestedEffort);
   const sendsEffort = reasoningEffortSupported(opts.model);
+
+  if (opts.model.startsWith("anthropic/")) {
+    return chatAnthropic({
+      model: opts.model,
+      system: opts.system,
+      user: opts.user,
+      maxTokens: limit,
+      temperature: canSetTemperature ? opts.temperature : undefined,
+      effort,
+    });
+  }
+
+  const key = process.env["LOVABLE_API_KEY"];
+  if (!key) throw new Error("Missing LOVABLE_API_KEY");
+
+  // GPT-5/6-family models take max_completion_tokens (never max_tokens),
+  // reject non-default temperature, and gpt-6-astra requires a reasoning effort.
+  const isOpenAiReasoning = opts.model.startsWith("openai/");
 
   const body = JSON.stringify({
     model: opts.model,
@@ -75,32 +183,17 @@ export async function chat(opts: {
     ...(sendsEffort && !isOpenAiReasoning ? { reasoning: { effort } } : {}),
   });
 
-  let res: Response | null = null;
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      res = await fetch(GATEWAY_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Lovable-API-Key": key,
-          "X-Lovable-AIG-SDK": "fetch",
-        },
-        body,
-        signal: AbortSignal.timeout(45_000),
-      });
-    } catch (e) {
-      lastErr = e;
-      res = null;
-    }
-    // Retry transient network failures and gateway congestion.
-    if (res && !(res.status === 429 || res.status >= 500)) break;
-    if (attempt < 2) await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
-  }
 
-  if (!res) {
-    throw new GatewayError(0, lastErr instanceof Error ? lastErr.message : "Network error contacting model");
-  }
+  const res = await postWithRetry(GATEWAY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Lovable-API-Key": key,
+      "X-Lovable-AIG-SDK": "fetch",
+    },
+    body,
+  });
+
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

@@ -114,17 +114,23 @@ function fence(body: string, lang = "text") {
 
 function paramTable(model: string, temperature: number, effort: LabConfig["agentReasoningEffort"], maxTokens: number) {
   const isOpenAi = model.startsWith("openai/");
+  const isAnthropic = model.startsWith("anthropic/");
   const tempSent = temperatureSupported(model) ? String(temperature) : "not sent (provider-fixed)";
   const effSent = reasoningEffortSupported(model)
     ? isOpenAi
       ? `reasoning_effort: "${normalizeEffortForModel(model, effort)}"`
-      : `reasoning: { effort: "${normalizeEffortForModel(model, effort)}" }`
+      : isAnthropic
+        ? `output_config: { effort: "${normalizeEffortForModel(model, effort)}" }`
+        : `reasoning: { effort: "${normalizeEffortForModel(model, effort)}" }`
     : "not sent (gateway-default)";
   const tokenField = isOpenAi
     ? `max_completion_tokens: ${Math.max(maxTokens, 2000)}`
-    : `max_tokens: ${maxTokens}`;
+    : isAnthropic
+      ? `max_tokens: ${Math.max(maxTokens, 4096)}`
+      : `max_tokens: ${maxTokens}`;
   return [
     `| model | \`${model}\` |`,
+    `| endpoint | ${isAnthropic ? "`POST https://api.anthropic.com/v1/messages` (anthropic-version: 2023-06-01)" : "`POST https://ai.gateway.lovable.dev/v1/chat/completions`"} |`,
     `| temperature | ${tempSent} |`,
     `| reasoning effort | ${effSent} |`,
     `| token limit | \`${tokenField}\` |`,
@@ -134,6 +140,7 @@ function paramTable(model: string, temperature: number, effort: LabConfig["agent
     } |`,
   ].join("\n");
 }
+
 
 function taskBlock(mode: "assisted" | "emergent", cfg: LabConfig, seed: number) {
   const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, mode, seed);

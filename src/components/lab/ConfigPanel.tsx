@@ -67,11 +67,16 @@ export function ConfigPanel({
           disabled={disabled ?? false}
           onChange={(e) => onChange({ agentModel: e.target.value })}
         >
-          {WORKER_MODELS.filter((m) => m !== MONITOR_MODEL_ID).map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
+          {["openai", "google", "anthropic"].map((provider) => (
+            <optgroup key={provider} label={provider}>
+              {WORKER_MODELS.filter((m) => m !== MONITOR_MODEL_ID && m.startsWith(`${provider}/`)).map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </optgroup>
           ))}
+
         </select>
         <p className="font-mono text-[11px] text-muted-foreground">
           monitor: {MONITOR_MODEL_ID.split("/")[1]} · temp {config.monitorTemperature.toFixed(1)} · locked
