@@ -35,6 +35,10 @@ export type LabConfig = {
   baseSeed: number | null;
   /** Force identical task instances across replicates (isolates model stochasticity). */
   sameTasksAcrossReplicates: boolean;
+  /** Locked reasoning effort for worker agents — identical on every step. */
+  agentReasoningEffort: ReasoningEffort;
+  /** Locked reasoning effort for the monitor. */
+  monitorReasoningEffort: ReasoningEffort;
 };
 
 export const DEFAULT_CONFIG: LabConfig = {
