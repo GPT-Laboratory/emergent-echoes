@@ -72,6 +72,8 @@ function groupRows(rows: Row[]): GroupItem[] {
         experimentId: exp,
         runs: children.length,
         mode: children[0]?.config?.taskMode ?? "assisted",
+        startedAt: children[children.length - 1]?.started_at ?? children[children.length - 1]?.created_at ?? "",
+        config: children[0]?.config ?? null,
       });
       for (const child of rows.filter((x) => x.experiment_id === exp)) out.push({ kind: "run", run: child });
     } else if (!exp) {
