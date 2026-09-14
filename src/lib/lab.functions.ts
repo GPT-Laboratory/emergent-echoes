@@ -468,6 +468,8 @@ async function runAgentStep(
       step_count: stepIndex + 1,
       status: finished ? "done" : "running",
       answer,
+      ...(stepIndex === 0 ? { started_at: startedAt } : {}),
+      ...(finished ? { finished_at: new Date().toISOString() } : {}),
     })
     .eq("id", agent.id);
 
