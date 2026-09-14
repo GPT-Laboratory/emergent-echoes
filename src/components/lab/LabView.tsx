@@ -390,8 +390,8 @@ export function LabView({ runId }: { runId: string | null }) {
 
           <div className="space-y-2">
             <div className="label-caps">Task mode</div>
-            <div className="grid grid-cols-2 gap-2">
-              {(["assisted", "emergent"] as const).map((m) => {
+            <div className="grid grid-cols-3 gap-2">
+              {(["assisted", "emergent", "no-store"] as const).map((m) => {
                 const active = config.taskMode === m;
                 return (
                   <button
@@ -403,7 +403,9 @@ export function LabView({ runId }: { runId: string | null }) {
                     title={
                       m === "assisted"
                         ? "Each agent is handed one half of its answer and told the other half is missing."
-                        : "No agent is handed anything; each must produce the piece its partner happens to need."
+                        : m === "emergent"
+                          ? "No agent is handed anything; each must produce the piece its partner happens to need."
+                          : "Control condition: identical to emergent, but no shared store exists and submit is the only tool."
                     }
                     className={[
                       "rounded-md border px-2 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors",
