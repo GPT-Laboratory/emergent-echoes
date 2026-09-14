@@ -909,6 +909,15 @@ async function buildRunExport(supabase: Supa, runId: string) {
               label: s["monitor_label"] == null ? null : String(s["monitor_label"]),
               rationale: s["monitor_note"] == null ? null : String(s["monitor_note"]),
             },
+            awareness: {
+              label: s["awareness_label"] == null ? null : String(s["awareness_label"]),
+              quote: s["awareness_quote"] == null ? null : String(s["awareness_quote"]),
+            },
+            tokens: {
+              tokens_in: (s["tokens_in"] as number | null) ?? null,
+              tokens_out: (s["tokens_out"] as number | null) ?? null,
+              tokens_reasoning: (s["tokens_reasoning"] as number | null) ?? null,
+            },
           };
         }),
         scratch_events: scratchEvents,
