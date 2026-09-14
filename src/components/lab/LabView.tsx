@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { Button } from "@/components/ui/button";
 import { ConfigPanel } from "@/components/lab/ConfigPanel";
 import { PropensityChart, type SweepPoint } from "@/components/lab/PropensityChart";
+import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadRunJson } from "@/lib/export-client";
@@ -61,6 +62,7 @@ export function LabView({ runId }: { runId: string | null }) {
   const navigate = useNavigate();
   const [config, setConfig] = useState<LabConfig>(DEFAULT_CONFIG);
   const [runStatus, setRunStatus] = useState<string | null>(null);
+  const [runRow, setRunRow] = useState<RunRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sweepKnob, setSweepKnob] = useState<SweepKnob>("difficulty");
   const [sweep, setSweep] = useState<SweepPoint[]>([]);
