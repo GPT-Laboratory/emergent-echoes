@@ -1,6 +1,6 @@
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import type { LabConfig } from "@/lib/lab-types";
+import { REASONING_EFFORTS, type LabConfig, type ReasoningEffort } from "@/lib/lab-types";
 
 function Knob({
   label,
