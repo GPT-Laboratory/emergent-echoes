@@ -82,6 +82,114 @@ export function LabView({ runId }: { runId: string | null }) {
   const doFinish = useServerFn(finishExperiment);
   const doStepAgent = useServerFn(stepAgent);
   const doReplicateSet = useServerFn(createReplicateSet);
+  const doClassify = useServerFn(classifyAwarenessBatch);
+  const doSample = useServerFn(codingSample);
+  const doImport = useServerFn(importCodings);
+  const doValidation = useServerFn(monitorValidation);
+
+  /** Classify stored steps in small batches until the backlog is empty. */
+  const runClassifier = async () => {
+    setClassifying(true);
+    setMeasureNote("Classifying stored steps…");
+    try {
+      let done = 0;
+      for (;;) {
+        const res = await doClassify({ data: { limit: 20 } });
+        done += res.processed;
+        setMeasureNote(`Classified ${done} steps · ${res.remaining} remaining`);
+        if (res.processed === 0 || res.remaining === 0) break;
+      }
+      setMeasureNote(`Classification complete · ${done} steps labelled`);
+    } catch (e) {
+      setMeasureNote(`Classification failed: ${String(e)}`);
+    } finally {
+      setClassifying(false);
+    }
+  };
+
+  const downloadSample = async () => {
+    const res = await doSample({ data: { size: 100 } });
+    const cols = [
+      "step_id",
+      "world_id",
+      "step_index",
+      "tool",
+      "monitor_severity",
+      "monitor_label",
+      "awareness_label",
+      "human_severity",
+      "human_awareness",
+      "reasoning",
+      "observation",
+    ];
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      `# sample_seed=${res.sample_seed}`,
+      cols.join(","),
+      ...res.rows.map((r) => cols.map((c) => esc((r as Record<string, unknown>)[c])).join(",")),
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `coding-sample_seed-${res.sample_seed}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMeasureNote(`Sample of ${res.rows.length} steps downloaded · seed ${res.sample_seed}`);
+  };
+
+  const importCsv = async (file: File) => {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+      const seedLine = lines.find((l) => l.startsWith("# sample_seed="));
+      const sampleSeed = seedLine ? Number(seedLine.split("=")[1]) : null;
+      const body = lines.filter((l) => !l.startsWith("#"));
+      const header = (body.shift() ?? "").split(",").map((h) => h.replace(/^"|"$/g, "").trim());
+      const idx = (name: string) => header.indexOf(name);
+      const parseRow = (line: string) => {
+        const out: string[] = [];
+        let cur = "";
+        let quoted = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i]!;
+          if (quoted) {
+            if (ch === '"' && line[i + 1] === '"') {
+              cur += '"';
+              i++;
+            } else if (ch === '"') quoted = false;
+            else cur += ch;
+          } else if (ch === '"') quoted = true;
+          else if (ch === ",") {
+            out.push(cur);
+            cur = "";
+          } else cur += ch;
+        }
+        out.push(cur);
+        return out;
+      };
+      const rows = body
+        .map(parseRow)
+        .map((cells) => ({
+          step_id: (cells[idx("step_id")] ?? "").trim(),
+          human_severity: cells[idx("human_severity")]?.trim() ? Number(cells[idx("human_severity")]) : null,
+          human_awareness: cells[idx("human_awareness")]?.trim() || null,
+        }))
+        .filter((r) => r.step_id && (r.human_severity != null || r.human_awareness != null));
+      if (!rows.length) {
+        setMeasureNote("No coded rows found in that file.");
+        return;
+      }
+      const res = await doImport({ data: { sampleSeed, rows } });
+      const val = await doValidation({ data: {} });
+      const sev = val?.severity_weighted_kappa?.kappa;
+      const aw = val?.awareness_kappa?.kappa;
+      setMeasureNote(
+        `Imported ${res.imported} codings · severity kappa ${sev == null ? "—" : sev.toFixed(2)} · awareness kappa ${aw == null ? "—" : aw.toFixed(2)}`,
+      );
+    } catch (e) {
+      setMeasureNote(`Import failed: ${String(e)}`);
+    }
+  };
 
   const driverOpts = () => ({
     mode: config.schedulerMode,
