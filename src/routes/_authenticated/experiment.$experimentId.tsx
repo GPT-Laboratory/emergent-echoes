@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Fragment, useEffect, useState } from "react";
 
 import { DoseResponseChart, type DosePoint } from "@/components/lab/DoseResponseChart";
+import { CompleteBadge, ProvisionalBadge, RunHeader } from "@/components/lab/RunHeader";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadSweepJson } from "@/lib/export-client";
@@ -60,10 +61,28 @@ type PointRow = DosePoint & {
   replicates: Replicate[];
 };
 
+type ExpProgress = {
+  runsDone: number;
+  runsTotal: number;
+  worldsDone: number;
+  worldsTotal: number;
+  activeRunId: string | null;
+};
+
+function formatEta(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h} h ${m % 60} min`;
+}
+
 function ExperimentDetail() {
   const { experimentId } = Route.useParams();
   const [exp, setExp] = useState<Exp | null>(null);
   const [points, setPoints] = useState<PointRow[]>([]);
+  const [progress, setProgress] = useState<ExpProgress | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const doExport = useServerFn(exportExperiment);
@@ -79,7 +98,7 @@ function ExperimentDetail() {
         .order("sweep_value");
       const runIds = (runs ?? []).map((r) => r.id);
       const { data: worlds } = runIds.length
-        ? await supabase.from("worlds").select("id,run_id,cross_agent_read").in("run_id", runIds)
+        ? await supabase.from("worlds").select("id,run_id,cross_agent_read,status").in("run_id", runIds)
         : { data: [] };
       const worldIds = (worlds ?? []).map((w) => w.id);
       const { data: agents } = worldIds.length
@@ -89,6 +108,16 @@ function ExperimentDetail() {
 
       const runOfWorld = new Map((worlds ?? []).map((w) => [w.id as string, w.run_id as string]));
       setExp(e ? ({ ...e, sweep_points: (e.sweep_points ?? []) as number[] } as Exp) : null);
+
+      const allRuns = runs ?? [];
+      const allWorlds = (worlds ?? []) as Array<{ run_id: string; status: string }>;
+      setProgress({
+        runsDone: allRuns.filter((r) => r.status === "complete").length,
+        runsTotal: allRuns.length,
+        worldsDone: allWorlds.filter((w) => w.status !== "running").length,
+        worldsTotal: allWorlds.length,
+        activeRunId: (allRuns.find((r) => r.status === "running")?.id as string | undefined) ?? null,
+      });
 
       const byPoint = new Map<number, typeof runs>();
       for (const r of runs ?? []) {
@@ -163,6 +192,15 @@ function ExperimentDetail() {
   };
 
   const title = exp?.type === "replicate_set" ? "Replicate set" : "Persistence sweep";
+  const running = exp != null && exp.status !== "complete";
+
+  let etaMs: number | null = null;
+  if (running && exp && progress && progress.worldsDone >= 2 && progress.worldsDone < progress.worldsTotal) {
+    const elapsed = Date.now() - new Date(exp.started_at).getTime();
+    etaMs = Math.max(0, (elapsed / progress.worldsDone) * (progress.worldsTotal - progress.worldsDone));
+  }
+  const pct =
+    progress && progress.worldsTotal ? Math.round((progress.worldsDone / progress.worldsTotal) * 100) : 0;
 
   return (
     <main className="mx-auto max-w-[1200px] px-5 py-6">
@@ -186,6 +224,27 @@ function ExperimentDetail() {
           {busy ? "Building…" : "Download sweep JSON"}
         </Button>
       </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {running ? <ProvisionalBadge status="running" /> : <CompleteBadge />}
+      </div>
+
+      {(progress?.activeRunId || points[0]?.replicates[0]?.runId) && (
+        <RunHeader runId={progress?.activeRunId ?? points[0]!.replicates[0]!.runId} sweepPoints={points.length} className="mt-3" />
+      )}
+
+      {running && progress && progress.worldsTotal > 0 && (
+        <div className="mt-3 rounded-md border border-border bg-card/70 px-3 py-2">
+          <div className="h-1.5 w-full overflow-hidden rounded-sm bg-muted">
+            <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+            {progress.worldsDone} / {progress.worldsTotal} worlds · replicate {Math.min(progress.runsDone + 1, progress.runsTotal)} of{" "}
+            {progress.runsTotal} · {etaMs == null ? "estimating…" : `~${formatEta(etaMs)} left`}
+          </p>
+        </div>
+      )}
+
 
       <div className="mt-5 rounded-md border border-border bg-card/70 p-4">
         <h2 className="mb-3 font-mono text-sm text-foreground">Coordination rate by persistence</h2>
