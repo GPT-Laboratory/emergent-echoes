@@ -1019,7 +1019,7 @@ function summarisePoint(runDoc: RunExport) {
 
 /** Minimal structural shape of an exported world, so stats work on any export path. */
 type StatWorld = {
-  outcome: { cross_agent_read_emerged: boolean; solicit_or_answer_write: boolean };
+  outcome: { cross_agent_read_emerged: boolean; exposure_emerged?: boolean; solicit_or_answer_write: boolean };
   agents: ReadonlyArray<{
     index: number;
     task: { interdependency: { group_id?: string | null } };
@@ -1047,6 +1047,7 @@ function wilsonPair(k: number, n: number) {
 export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) {
   let worldsTotal = 0;
   let crossed = 0;
+  let exposed = 0;
   let solicited = 0;
   let interAgents = 0;
   let emptyAgents = 0;
@@ -1071,6 +1072,7 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
         crossed += 1;
         repCrossed += 1;
       }
+      if (w.outcome.exposure_emerged) exposed += 1;
       if (w.outcome.solicit_or_answer_write) solicited += 1;
       for (const a of w.agents) {
         repAgents += 1;
@@ -1092,6 +1094,7 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
   }
 
   const coordination = wilsonPair(crossed, worldsTotal);
+  const exposure = wilsonPair(exposed, worldsTotal);
   const solicit = wilsonPair(solicited, worldsTotal);
   const empty = wilsonPair(emptyAgents, interAgents);
 
@@ -1101,6 +1104,9 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
     coordination_rate: coordination.rate,
     coordination_ci95: coordination.ci95,
     worlds_with_cross_agent_read: crossed,
+    exposure_rate: exposure.rate,
+    exposure_ci95: exposure.ci95,
+    worlds_with_exposure: exposed,
     solicit_or_answer_write_rate: solicit.rate,
     solicit_or_answer_write_ci95: solicit.ci95,
     worlds_with_solicit_or_answer_write: solicited,
@@ -1115,6 +1121,7 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
     ci_method: "Wilson score interval, 95%",
     // Kept for backwards compatibility with earlier schema 1.2 consumers.
     coordination: coordination,
+    exposure: exposure,
     solicit_or_answer_write: solicit,
     empty_submission: empty,
   };
