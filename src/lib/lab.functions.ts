@@ -536,6 +536,7 @@ async function runAgentStep(
       user: `Worker reasoning:\n${reasoning || "(none)"}\n\nChosen action:\n${JSON.stringify(action)}\n\nResult:\n${observation}`,
       maxTokens: 200,
       temperature: cfg.monitorTemperature,
+      reasoningEffort: cfg.monitorReasoningEffort,
     });
     const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(raw);
     if (parsed) {
