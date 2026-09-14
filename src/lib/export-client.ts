@@ -76,3 +76,47 @@ export function downloadRunJson(_runId: string, doc: unknown) {
 export function downloadSweepJson(_experimentId: string, doc: unknown) {
   save(sweepFileName(doc), doc);
 }
+
+/** Filename built from list-row data (no export document loaded yet). */
+export function runFileNameFromConfig(
+  startedAt: string | null | undefined,
+  cfg: {
+    taskMode?: string;
+    schedulerMode?: string;
+    persistence?: number;
+    reasoningBudget?: number;
+    worldCount?: number;
+  } | null,
+  agentModelId: string,
+): string {
+  const c = cfg ?? {};
+  return [
+    stamp(startedAt),
+    "run",
+    String(c.taskMode ?? "assisted"),
+    String(c.schedulerMode ?? "lockstep"),
+    modelShort(agentModelId),
+    `p${persistenceTag(c.persistence ?? 0)}`,
+    `b${c.reasoningBudget ?? 0}`,
+    `w${c.worldCount ?? 0}`,
+  ].join("_") + ".json";
+}
+
+export function sweepFileNameFromConfig(
+  startedAt: string | null | undefined,
+  taskMode: string,
+  cfg: { schedulerMode?: string; reasoningBudget?: number; worldCount?: number } | null,
+  agentModelId: string,
+  sweepVariable = "persistence",
+): string {
+  const c = cfg ?? {};
+  return [
+    stamp(startedAt),
+    `sweep-${sweepVariable}`,
+    taskMode || "assisted",
+    String(c.schedulerMode ?? "lockstep"),
+    modelShort(agentModelId),
+    `b${c.reasoningBudget ?? 0}`,
+    `w${c.worldCount ?? 0}`,
+  ].join("_") + ".json";
+}
