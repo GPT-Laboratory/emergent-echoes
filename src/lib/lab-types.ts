@@ -23,12 +23,22 @@ export const WORKER_MODELS = [
   "google/gemini-3.6-flash",
   "google/gemini-3-flash-preview",
   "google/gemini-3.1-flash-lite",
+  "anthropic/claude-opus-5",
+  "anthropic/claude-sonnet-5",
+  "anthropic/claude-fable-5-1",
+  "anthropic/claude-haiku-4-5-20251001",
 ] as const;
 
 /** "openai/gpt-6-astra" -> "openai" */
 export function providerOf(modelId: string): string {
   return modelId.split("/")[0] ?? "unknown";
 }
+
+/** "anthropic/claude-sonnet-5" -> "claude-sonnet-5" (the exact Anthropic API id). */
+export function anthropicApiId(modelId: string): string {
+  return modelId.replace(/^anthropic\//, "");
+}
+
 
 export type TaskKind = "solvable" | "interdependent" | "blocked";
 
