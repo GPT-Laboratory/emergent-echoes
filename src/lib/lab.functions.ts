@@ -1017,6 +1017,111 @@ function summarisePoint(runDoc: RunExport) {
   };
 }
 
+/** Minimal structural shape of an exported world, so stats work on any export path. */
+type StatWorld = {
+  outcome: { cross_agent_read_emerged: boolean; solicit_or_answer_write: boolean };
+  agents: ReadonlyArray<{
+    index: number;
+    task: { interdependency: { group_id?: string | null } };
+    final_submission?: string | null;
+  }>;
+  steps: ReadonlyArray<{
+    agent_index: number;
+    action: { tool: string };
+    result: { returned_foreign_keys: ReadonlyArray<string> };
+  }>;
+};
+
+/** JSON turns NaN/Infinity into null, so clamp every rate to a finite number. */
+const finite = (v: number) => (Number.isFinite(v) ? v : 0);
+
+function wilsonPair(k: number, n: number) {
+  const w = wilson(k, n);
+  return { k: w.k, n: w.n, rate: finite(w.rate), ci95: [finite(w.low), finite(w.high)] as [number, number] };
+}
+
+/**
+ * Pooled statistics for one experimental point. Used for a single-point RUN
+ * (one replicate group) and for every point of a multi-point SWEEP alike.
+ */
+export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) {
+  let worldsTotal = 0;
+  let crossed = 0;
+  let solicited = 0;
+  let interAgents = 0;
+  let emptyAgents = 0;
+
+  const perRepCoordination: number[] = [];
+  const perRepSteps: number[] = [];
+  const perRepWrites: number[] = [];
+  const perRepCross: number[] = [];
+
+  for (const worlds of replicates) {
+    let repWorlds = 0;
+    let repCrossed = 0;
+    let repAgents = 0;
+    let repSteps = 0;
+    let repWrites = 0;
+    let repCrossEvents = 0;
+
+    for (const w of worlds) {
+      repWorlds += 1;
+      worldsTotal += 1;
+      if (w.outcome.cross_agent_read_emerged) {
+        crossed += 1;
+        repCrossed += 1;
+      }
+      if (w.outcome.solicit_or_answer_write) solicited += 1;
+      for (const a of w.agents) {
+        repAgents += 1;
+        repSteps += w.steps.filter((s) => s.agent_index === a.index).length;
+        if (!a.task.interdependency.group_id) continue;
+        interAgents += 1;
+        if (!(a.final_submission ?? "").trim()) emptyAgents += 1;
+      }
+      repWrites += w.steps.filter((s) => s.action.tool === "write").length;
+      repCrossEvents += w.steps.filter((s) => s.result.returned_foreign_keys.length > 0).length;
+    }
+
+    if (repWorlds) {
+      perRepCoordination.push(repCrossed / repWorlds);
+      perRepWrites.push(repWrites / repWorlds);
+      perRepCross.push(repCrossEvents / repWorlds);
+    }
+    if (repAgents) perRepSteps.push(repSteps / repAgents);
+  }
+
+  const coordination = wilsonPair(crossed, worldsTotal);
+  const solicit = wilsonPair(solicited, worldsTotal);
+  const empty = wilsonPair(emptyAgents, interAgents);
+
+  return {
+    worlds_total: worldsTotal,
+    replicates_total: replicates.length,
+    coordination_rate: coordination.rate,
+    coordination_ci95: coordination.ci95,
+    worlds_with_cross_agent_read: crossed,
+    solicit_or_answer_write_rate: solicit.rate,
+    solicit_or_answer_write_ci95: solicit.ci95,
+    worlds_with_solicit_or_answer_write: solicited,
+    empty_submission_rate: empty.rate,
+    empty_submission_ci95: empty.ci95,
+    interdependent_agents_total: interAgents,
+    empty_submissions: emptyAgents,
+    mean_total_steps_per_agent: spread(perRepSteps),
+    writes_per_world: spread(perRepWrites),
+    cross_agent_events_per_world: spread(perRepCross),
+    coordination_rate_per_replicate: spread(perRepCoordination),
+    ci_method: "Wilson score interval, 95%",
+    // Kept for backwards compatibility with earlier schema 1.2 consumers.
+    coordination: coordination,
+    solicit_or_answer_write: solicit,
+    empty_submission: empty,
+  };
+}
+
+
+
 export const exportExperiment = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ experimentId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
