@@ -105,13 +105,21 @@ export function cancelDriver(runId: string) {
   cancelled.add(runId);
 }
 
-export async function startDriver(runId: string, tick: Tick, onError?: (msg: string) => void) {
+export async function startDriver(
+  runId: string,
+  tick: Tick,
+  onError?: (msg: string) => void,
+  opts?: DriverOptions,
+) {
   if (driving.has(runId)) return;
   driving.add(runId);
   cancelled.delete(runId);
   emit();
 
   try {
+    if (opts?.mode === "async" && opts.stepAgent) {
+      await driveAsync(runId, opts.stepAgent, onError);
+    } else
     for (;;) {
       if (cancelled.has(runId)) break;
       const { data: active } = await supabase
