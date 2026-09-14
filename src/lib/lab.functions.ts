@@ -846,7 +846,27 @@ async function buildRunExport(supabase: Supa, runId: string) {
         },
       },
 
+      /** Same shape as a sweep export: one point, one replicate. */
+      points: [
+        {
+          persistence: cfg.persistence,
+          replicates: [
+            {
+              replicate_index: runMeta.replicate_index ?? 0,
+              replicate_seed: runMeta.replicate_seed ?? null,
+              api_seed: runMeta.api_seed ?? null,
+              run_id: String(run.id),
+              started_at: startedAt,
+              finished_at: finishedAt,
+              duration_ms: durationMs,
+            },
+          ],
+          stats: pointStats([worldsOut]),
+        },
+      ],
+
       worlds: worldsOut,
+
       aggregate: {
         worlds_total: worldsOut.length,
         worlds_with_cross_agent_read: crossed.length,
@@ -1017,6 +1037,111 @@ function summarisePoint(runDoc: RunExport) {
   };
 }
 
+/** Minimal structural shape of an exported world, so stats work on any export path. */
+type StatWorld = {
+  outcome: { cross_agent_read_emerged: boolean; solicit_or_answer_write: boolean };
+  agents: ReadonlyArray<{
+    index: number;
+    task: { interdependency: { group_id?: string | null } };
+    final_submission?: string | null;
+  }>;
+  steps: ReadonlyArray<{
+    agent_index: number | null;
+    action: { tool: string };
+    result: { returned_foreign_keys: ReadonlyArray<string> };
+  }>;
+};
+
+/** JSON turns NaN/Infinity into null, so clamp every rate to a finite number. */
+const finite = (v: number) => (Number.isFinite(v) ? v : 0);
+
+function wilsonPair(k: number, n: number) {
+  const w = wilson(k, n);
+  return { k: w.k, n: w.n, rate: finite(w.rate), ci95: [finite(w.low), finite(w.high)] as [number, number] };
+}
+
+/**
+ * Pooled statistics for one experimental point. Used for a single-point RUN
+ * (one replicate group) and for every point of a multi-point SWEEP alike.
+ */
+export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) {
+  let worldsTotal = 0;
+  let crossed = 0;
+  let solicited = 0;
+  let interAgents = 0;
+  let emptyAgents = 0;
+
+  const perRepCoordination: number[] = [];
+  const perRepSteps: number[] = [];
+  const perRepWrites: number[] = [];
+  const perRepCross: number[] = [];
+
+  for (const worlds of replicates) {
+    let repWorlds = 0;
+    let repCrossed = 0;
+    let repAgents = 0;
+    let repSteps = 0;
+    let repWrites = 0;
+    let repCrossEvents = 0;
+
+    for (const w of worlds) {
+      repWorlds += 1;
+      worldsTotal += 1;
+      if (w.outcome.cross_agent_read_emerged) {
+        crossed += 1;
+        repCrossed += 1;
+      }
+      if (w.outcome.solicit_or_answer_write) solicited += 1;
+      for (const a of w.agents) {
+        repAgents += 1;
+        repSteps += w.steps.filter((s) => s.agent_index === a.index).length;
+        if (!a.task.interdependency.group_id) continue;
+        interAgents += 1;
+        if (!(a.final_submission ?? "").trim()) emptyAgents += 1;
+      }
+      repWrites += w.steps.filter((s) => s.action.tool === "write").length;
+      repCrossEvents += w.steps.filter((s) => s.result.returned_foreign_keys.length > 0).length;
+    }
+
+    if (repWorlds) {
+      perRepCoordination.push(repCrossed / repWorlds);
+      perRepWrites.push(repWrites / repWorlds);
+      perRepCross.push(repCrossEvents / repWorlds);
+    }
+    if (repAgents) perRepSteps.push(repSteps / repAgents);
+  }
+
+  const coordination = wilsonPair(crossed, worldsTotal);
+  const solicit = wilsonPair(solicited, worldsTotal);
+  const empty = wilsonPair(emptyAgents, interAgents);
+
+  return {
+    worlds_total: worldsTotal,
+    replicates_total: replicates.length,
+    coordination_rate: coordination.rate,
+    coordination_ci95: coordination.ci95,
+    worlds_with_cross_agent_read: crossed,
+    solicit_or_answer_write_rate: solicit.rate,
+    solicit_or_answer_write_ci95: solicit.ci95,
+    worlds_with_solicit_or_answer_write: solicited,
+    empty_submission_rate: empty.rate,
+    empty_submission_ci95: empty.ci95,
+    interdependent_agents_total: interAgents,
+    empty_submissions: emptyAgents,
+    mean_total_steps_per_agent: spread(perRepSteps),
+    writes_per_world: spread(perRepWrites),
+    cross_agent_events_per_world: spread(perRepCross),
+    coordination_rate_per_replicate: spread(perRepCoordination),
+    ci_method: "Wilson score interval, 95%",
+    // Kept for backwards compatibility with earlier schema 1.2 consumers.
+    coordination: coordination,
+    solicit_or_answer_write: solicit,
+    empty_submission: empty,
+  };
+}
+
+
+
 export const exportExperiment = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ experimentId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
@@ -1073,53 +1198,13 @@ export const exportExperiment = createServerFn({ method: "POST" })
       .sort((a, b) => a[0] - b[0])
       .map(([persistence, reps]) => {
         const sorted = [...reps].sort((a, b) => a.replicate_index - b.replicate_index);
-        const sum = (f: (s: ReplicateDoc["summary"]) => number) =>
-          sorted.reduce((acc, r) => acc + f(r.summary), 0);
-
-        const worldsTotal = sum((s) => s.worlds_total);
-        const crossed = sum((s) => s.worlds_with_cross_agent_read);
-        const solicited = sum((s) => s.worlds_with_solicit_or_answer_write);
-
-        // Empty submissions are per interdependent agent, recomputed from the runs.
-        let interAgents = 0;
-        let emptyAgents = 0;
-        let writes = 0;
-        let crossEvents = 0;
-        for (const r of sorted) {
-          for (const w of r.run.worlds) {
-            for (const a of w.agents) {
-              if (!a.task.interdependency.group_id) continue;
-              interAgents += 1;
-              if (!(a.final_submission ?? "").trim()) emptyAgents += 1;
-            }
-            writes += w.steps.filter((s) => s.action.tool === "write").length;
-            crossEvents += w.steps.filter((s) => s.result.returned_foreign_keys.length > 0).length;
-          }
-        }
-
-        const worldsCount = worldsTotal || 1;
-        /** JSON turns NaN/Infinity into null, so clamp every rate to a finite number. */
-        const num = (v: number) => (Number.isFinite(v) ? v : 0);
-        const ci = (k: number, n: number) => {
-          const w = wilson(k, n);
-          return { k: w.k, n: w.n, rate: num(w.rate), ci95: [num(w.low), num(w.high)] as [number, number] };
-        };
         return {
           persistence,
           replicates: sorted,
-          stats: {
-            worlds_total: worldsTotal,
-            replicates_total: sorted.length,
-            coordination: ci(crossed, worldsTotal),
-            solicit_or_answer_write: ci(solicited, worldsTotal),
-            empty_submission: ci(emptyAgents, interAgents),
-            mean_total_steps_per_agent: spread(sorted.map((r) => r.summary.mean_total_steps_per_agent)),
-            coordination_rate_per_replicate: spread(sorted.map((r) => r.summary.coordination_rate)),
-            writes_per_world: num(writes / worldsCount),
-            cross_agent_events_per_world: num(crossEvents / worldsCount),
-          },
+          stats: pointStats(sorted.map((r) => r.run.worlds)),
         };
       });
+
 
     const agentTempEffective = effectiveTemperature(agentModelOf(cfg), cfg.agentTemperature);
     const monitorTempEffective = effectiveTemperature(MONITOR_MODEL_ID, cfg.monitorTemperature);
