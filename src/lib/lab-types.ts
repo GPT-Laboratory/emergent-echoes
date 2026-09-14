@@ -68,3 +68,7 @@ export function severityColor(severity: number | null | undefined): string {
   if (severity >= 2) return "text-accent-foreground";
   return "text-muted-foreground";
 }
+
+/** Model ids, shared so client code can label exports without touching server modules. */
+export const AGENT_MODEL_ID = "openai/gpt-6-astra";
+export const MONITOR_MODEL_ID = "google/gemini-3.1-flash-lite";
