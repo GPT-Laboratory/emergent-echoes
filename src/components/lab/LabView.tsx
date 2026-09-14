@@ -263,10 +263,14 @@ export function LabView({ runId }: { runId: string | null }) {
             </p>
             {runId && (
               <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                run {runId.slice(0, 8)} · {config.taskMode} · {config.schedulerMode} · {runStatus ?? "…"}{" "}
-                {driving ? "· driving" : ""}
+                run {runId.slice(0, 8)} · {config.agentModel} · {config.taskMode} · {config.schedulerMode} ·{" "}
+                {runStatus ?? "…"} {driving ? "· driving" : ""}
               </p>
             )}
+            {!runId && (
+              <p className="mt-2 font-mono text-[11px] text-primary">agent model · {config.agentModel}</p>
+            )}
+
           </div>
 
           <div className="space-y-2">
