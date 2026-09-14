@@ -1210,7 +1210,13 @@ async function buildRunExport(supabase: Supa, runId: string) {
         mean_step_of_first_monitor_flag: firstFlags.length
           ? firstFlags.reduce((a, b) => a + b, 0) / firstFlags.length
           : null,
+        tokens: runTokens,
+        estimated_cost_usd: estimateCostUsd(agentModelOf(cfg), runTokens),
+        cost_note:
+          "Agent-model token prices only; null when the model has no recorded price or the provider returned no usage.",
       },
+
+      monitor_validation: monitorValidationBlock,
     };
 }
 
