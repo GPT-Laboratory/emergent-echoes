@@ -446,6 +446,24 @@ export function LabView({ runId }: { runId: string | null }) {
                 {exporting ? "Building…" : "Download JSON"}
               </Button>
             )}
+            <Button
+              variant="outline"
+              title="Appendix A, rendered from the live prompt code for exactly this model, effort and task mix."
+              onClick={() =>
+                downloadPromptsAppendix(
+                  buildPromptsAppendix(config, {
+                    runId,
+                    startedAt: runRow?.started_at ?? null,
+                    label: config.runNote,
+                  }),
+                  runRow?.started_at ?? null,
+                  config,
+                )
+              }
+              className="font-mono text-xs uppercase tracking-widest"
+            >
+              Prompt appendix
+            </Button>
           </div>
 
           {!runId && (
