@@ -11,36 +11,50 @@ import {
   GatewayError,
 } from "./ai.server";
 import {
+  AGENT_MODEL_ID,
   DEFAULT_CONFIG,
   MONITOR_LABELS,
+  MONITOR_MODEL_ID,
   REASONING_EFFORTS,
+  WORKER_MODELS,
   effectiveReasoningEffort,
   formatDuration,
+  providerOf,
   type LabConfig,
 } from "./lab-types";
 import { deriveSeed, randomSeed } from "./rng";
 import { spread, wilson } from "./stats";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
-const ConfigSchema = z.object({
-  taskMode: z.enum(["assisted", "emergent"]).default("assisted"),
-  schedulerMode: z.enum(["lockstep", "async"]).default("lockstep"),
-  worldCount: z.number().int().min(1).max(20),
-  agentsPerWorld: z.number().int().min(2).max(8),
-  reasoningBudget: z.number().int().min(2).max(30),
-  difficulty: z.number().min(0).max(1),
-  persistence: z.number().min(0).max(1),
-  alertThreshold: z.number().int().min(1).max(7),
-  humanTimerSeconds: z.number().int().min(3).max(120),
-  defaultHumanAction: z.enum(["no_action", "stop_world"]),
-  agentTemperature: z.number().min(0).max(2).default(1),
-  monitorTemperature: z.number().min(0).max(2).default(0),
-  replicates: z.number().int().min(1).max(10).default(3),
-  baseSeed: z.number().int().nullable().default(null),
-  sameTasksAcrossReplicates: z.boolean().default(false),
-  agentReasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
-  monitorReasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
-});
+const ConfigSchema = z
+  .object({
+    taskMode: z.enum(["assisted", "emergent"]).default("assisted"),
+    schedulerMode: z.enum(["lockstep", "async"]).default("lockstep"),
+    worldCount: z.number().int().min(1).max(20),
+    agentsPerWorld: z.number().int().min(2).max(8),
+    reasoningBudget: z.number().int().min(2).max(30),
+    difficulty: z.number().min(0).max(1),
+    persistence: z.number().min(0).max(1),
+    alertThreshold: z.number().int().min(1).max(7),
+    humanTimerSeconds: z.number().int().min(3).max(120),
+    defaultHumanAction: z.enum(["no_action", "stop_world"]),
+    agentTemperature: z.number().min(0).max(2).default(1),
+    monitorTemperature: z.number().min(0).max(2).default(0),
+    replicates: z.number().int().min(1).max(10).default(3),
+    baseSeed: z.number().int().nullable().default(null),
+    sameTasksAcrossReplicates: z.boolean().default(false),
+    agentReasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
+    monitorReasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
+    agentModel: z.enum(WORKER_MODELS).default(AGENT_MODEL_ID),
+    runNote: z.string().max(300).default(""),
+  })
+  // The monitor is a fixed measurement instrument; it must never be the model
+  // under test, or agent capability and scoring capability move together.
+  .refine((c) => c.agentModel !== MONITOR_MODEL_ID, {
+    message: `Agent and monitor must be different models. The monitor is locked to ${MONITOR_MODEL_ID}; pick another agent model.`,
+    path: ["agentModel"],
+  });
+
 
 async function db() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
