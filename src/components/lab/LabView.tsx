@@ -166,9 +166,21 @@ export function LabView({ runId }: { runId: string | null }) {
     return m;
   }, [steps]);
 
+  /** Weaker, additive signal: a list() that revealed a key written by another agent. */
+  const exposedWorldIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of steps) {
+      if (String((s.action as Record<string, unknown>)["tool"] ?? "") !== "list") continue;
+      if ((s.foreign_keys ?? []).length > 0) ids.add(s.world_id);
+    }
+    return ids;
+  }, [steps]);
+
   const stats = useMemo(() => {
     const n = worlds.length || 1;
     const crossed = worlds.filter((w) => w.cross_agent_read);
+    const exposed = worlds.filter((w) => exposedWorldIds.has(w.id));
+    const wExp = wilson(exposed.length, worlds.length);
     const solicited = worlds.filter((w) => w.solicit_write).length;
     const meanFirst =
       crossed.length > 0
@@ -178,12 +190,14 @@ export function LabView({ runId }: { runId: string | null }) {
     const w95 = wilson(crossed.length, worlds.length);
     return {
       crossRate: Math.round((crossed.length / n) * 100),
+      exposureRate: Math.round((exposed.length / n) * 100),
+      exposureCi: worlds.length ? `${Math.round(wExp.low * 100)}–${Math.round(wExp.high * 100)}%` : "—",
       ci: worlds.length ? `${Math.round(w95.low * 100)}–${Math.round(w95.high * 100)}%` : "—",
       solicitRate: Math.round((solicited / n) * 100),
       meanFirst,
       meanFirstFlag: flaggedFirst.length ? flaggedFirst.reduce((a, b) => a + b, 0) / flaggedFirst.length : null,
     };
-  }, [worlds]);
+  }, [worlds, exposedWorldIds]);
 
   /* ---- sweep across every recorded run, bucketed by the chosen knob ---- */
   const loadSweep = useCallback(async () => {
@@ -525,6 +539,16 @@ export function LabView({ runId }: { runId: string | null }) {
                 label="Coordination 95% CI"
                 value={stats.ci}
                 tone="primary"
+                provisional={provisional}
+              />
+              <Stat
+                label="Exposure (list saw foreign key)"
+                value={`${stats.exposureRate}%`}
+                provisional={provisional}
+              />
+              <Stat
+                label="Exposure 95% CI"
+                value={stats.exposureCi}
                 provisional={provisional}
               />
               <Stat
