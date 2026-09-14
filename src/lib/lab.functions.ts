@@ -807,6 +807,13 @@ async function buildRunExport(supabase: Supa, runId: string) {
           agent_temperature_effective: agentTempEffective,
           monitor_temperature_effective: monitorTempEffective,
           provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
+          agent_reasoning_effort: cfg.agentReasoningEffort,
+          monitor_reasoning_effort: cfg.monitorReasoningEffort,
+          agent_reasoning_effort_effective: effectiveReasoningEffort(AGENT_MODEL, cfg.agentReasoningEffort),
+          monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL, cfg.monitorReasoningEffort),
+          reasoning_effort_locked: true,
+          reasoning_effort_note:
+            "Sent explicitly on every model call and held constant for all steps. 'gateway-default' would mean the model rejected the parameter and the gateway default applied.",
           replicates: cfg.replicates,
           base_seed: cfg.baseSeed ?? null,
           same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
