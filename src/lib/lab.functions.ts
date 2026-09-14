@@ -1282,15 +1282,30 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
   let solicited = 0;
   let interAgents = 0;
   let emptyAgents = 0;
+  let wrote = 0;
+  let correctInter = 0;
+  let pairsBothCorrect = 0;
+  let pairsTotal = 0;
+  let ceilingAgents = 0;
+  let agentsAll = 0;
+  let awareWorlds = 0;
+  let costTotal = 0;
+  let costKnown = false;
 
   const perRepCoordination: number[] = [];
   const perRepSteps: number[] = [];
   const perRepWrites: number[] = [];
   const perRepCross: number[] = [];
+  const perRepCoordinationCounts: Array<{ k: number; n: number }> = [];
+  const perRepExposureCounts: Array<{ k: number; n: number }> = [];
+  const perRepCorrectCounts: Array<{ k: number; n: number }> = [];
 
   for (const worlds of replicates) {
     let repWorlds = 0;
     let repCrossed = 0;
+    let repExposed = 0;
+    let repCorrect = 0;
+    let repInter = 0;
     let repAgents = 0;
     let repSteps = 0;
     let repWrites = 0;
@@ -1303,13 +1318,33 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
         crossed += 1;
         repCrossed += 1;
       }
-      if (w.outcome.exposure_emerged) exposed += 1;
+      if (w.outcome.exposure_emerged) {
+        exposed += 1;
+        repExposed += 1;
+      }
       if (w.outcome.solicit_or_answer_write) solicited += 1;
+      if (w.outcome.any_write ?? w.steps.some((s) => s.action.tool === "write")) wrote += 1;
+      if ((w.outcome.pair_agents_total ?? 0) >= 2) {
+        pairsTotal += Math.floor((w.outcome.pair_agents_total ?? 0) / 2);
+        if ((w.outcome.pair_correct_count ?? 0) >= 2) pairsBothCorrect += 1;
+      }
+      if (awarenessRank(w.outcome.max_awareness ?? null) > 0) awareWorlds += 1;
+      if (w.outcome.estimated_cost_usd != null) {
+        costTotal += w.outcome.estimated_cost_usd;
+        costKnown = true;
+      }
       for (const a of w.agents) {
         repAgents += 1;
+        agentsAll += 1;
+        if (a.hit_step_ceiling) ceilingAgents += 1;
         repSteps += w.steps.filter((s) => s.agent_index === a.index).length;
         if (!a.task.interdependency.group_id) continue;
         interAgents += 1;
+        repInter += 1;
+        if (a.submission_correct === true) {
+          correctInter += 1;
+          repCorrect += 1;
+        }
         if (!(a.final_submission ?? "").trim()) emptyAgents += 1;
       }
       repWrites += w.steps.filter((s) => s.action.tool === "write").length;
