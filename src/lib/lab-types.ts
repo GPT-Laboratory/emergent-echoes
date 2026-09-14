@@ -57,6 +57,8 @@ export const DEFAULT_CONFIG: LabConfig = {
   replicates: 3,
   baseSeed: null,
   sameTasksAcrossReplicates: false,
+  agentReasoningEffort: "low",
+  monitorReasoningEffort: "low",
 };
 
 /**
