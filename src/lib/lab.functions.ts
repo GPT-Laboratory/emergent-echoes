@@ -1158,7 +1158,15 @@ export const exportExperiment = createServerFn({ method: "POST" })
           reasoning_effort_note:
             "Sent explicitly on every model call and held constant for all steps and all sweep points. 'gateway-default' would mean the model rejected the parameter and the gateway default applied.",
         },
-        models: { agent_model: agentModelOf(cfg), monitor_model: MONITOR_MODEL_ID },
+        note: cfg.runNote ?? "",
+        models: {
+          agent_model: agentModelOf(cfg),
+          agent_provider: providerOf(agentModelOf(cfg)),
+          monitor_model: MONITOR_MODEL_ID,
+          monitor_provider: providerOf(MONITOR_MODEL_ID),
+          monitor_temperature: cfg.monitorTemperature,
+          monitor_locked: true,
+        },
         sweep_variable: "persistence",
         sweep_points: (exp.sweep_points ?? []) as number[],
         seed_policy: {
