@@ -9,15 +9,19 @@ import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/compo
 import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadPromptsAppendix, downloadRunJson } from "@/lib/export-client";
-import { buildPromptsAppendix } from "@/lib/prompt-spec";
+import { awarenessRank, buildPromptsAppendix } from "@/lib/prompt-spec";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
 import { wilson } from "@/lib/stats";
 import {
   activateRun,
+  classifyAwarenessBatch,
+  codingSample,
   createReplicateSet,
   createRun,
   createSweep,
   exportRun,
+  importCodings,
+  monitorValidation,
   finishExperiment,
   stepAgent,
   stopRun,
@@ -70,6 +74,8 @@ export function LabView({ runId }: { runId: string | null }) {
   const [sweep, setSweep] = useState<SweepPoint[]>([]);
   const [exporting, setExporting] = useState(false);
   const [sweepPoints, setSweepPoints] = useState("0.2, 0.4, 0.6, 0.8, 1.0");
+  const [classifying, setClassifying] = useState(false);
+  const [measureNote, setMeasureNote] = useState<string | null>(null);
 
   const doCreate = useServerFn(createRun);
   const doTick = useServerFn(tickWorld);
@@ -80,6 +86,114 @@ export function LabView({ runId }: { runId: string | null }) {
   const doFinish = useServerFn(finishExperiment);
   const doStepAgent = useServerFn(stepAgent);
   const doReplicateSet = useServerFn(createReplicateSet);
+  const doClassify = useServerFn(classifyAwarenessBatch);
+  const doSample = useServerFn(codingSample);
+  const doImport = useServerFn(importCodings);
+  const doValidation = useServerFn(monitorValidation);
+
+  /** Classify stored steps in small batches until the backlog is empty. */
+  const runClassifier = async () => {
+    setClassifying(true);
+    setMeasureNote("Classifying stored steps…");
+    try {
+      let done = 0;
+      for (;;) {
+        const res = await doClassify({ data: { limit: 20 } });
+        done += res.processed;
+        setMeasureNote(`Classified ${done} steps · ${res.remaining} remaining`);
+        if (res.processed === 0 || res.remaining === 0) break;
+      }
+      setMeasureNote(`Classification complete · ${done} steps labelled`);
+    } catch (e) {
+      setMeasureNote(`Classification failed: ${String(e)}`);
+    } finally {
+      setClassifying(false);
+    }
+  };
+
+  const downloadSample = async () => {
+    const res = await doSample({ data: { size: 100 } });
+    const cols = [
+      "step_id",
+      "world_id",
+      "step_index",
+      "tool",
+      "monitor_severity",
+      "monitor_label",
+      "awareness_label",
+      "human_severity",
+      "human_awareness",
+      "reasoning",
+      "observation",
+    ];
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      `# sample_seed=${res.sample_seed}`,
+      cols.join(","),
+      ...res.rows.map((r) => cols.map((c) => esc((r as Record<string, unknown>)[c])).join(",")),
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `coding-sample_seed-${res.sample_seed}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMeasureNote(`Sample of ${res.rows.length} steps downloaded · seed ${res.sample_seed}`);
+  };
+
+  const importCsv = async (file: File) => {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+      const seedLine = lines.find((l) => l.startsWith("# sample_seed="));
+      const sampleSeed = seedLine ? Number(seedLine.split("=")[1]) : null;
+      const body = lines.filter((l) => !l.startsWith("#"));
+      const header = (body.shift() ?? "").split(",").map((h) => h.replace(/^"|"$/g, "").trim());
+      const idx = (name: string) => header.indexOf(name);
+      const parseRow = (line: string) => {
+        const out: string[] = [];
+        let cur = "";
+        let quoted = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i]!;
+          if (quoted) {
+            if (ch === '"' && line[i + 1] === '"') {
+              cur += '"';
+              i++;
+            } else if (ch === '"') quoted = false;
+            else cur += ch;
+          } else if (ch === '"') quoted = true;
+          else if (ch === ",") {
+            out.push(cur);
+            cur = "";
+          } else cur += ch;
+        }
+        out.push(cur);
+        return out;
+      };
+      const rows = body
+        .map(parseRow)
+        .map((cells) => ({
+          step_id: (cells[idx("step_id")] ?? "").trim(),
+          human_severity: cells[idx("human_severity")]?.trim() ? Number(cells[idx("human_severity")]) : null,
+          human_awareness: cells[idx("human_awareness")]?.trim() || null,
+        }))
+        .filter((r) => r.step_id && (r.human_severity != null || r.human_awareness != null));
+      if (!rows.length) {
+        setMeasureNote("No coded rows found in that file.");
+        return;
+      }
+      const res = await doImport({ data: { sampleSeed, rows } });
+      const val = await doValidation({ data: {} });
+      const sev = val?.severity_weighted_kappa?.kappa;
+      const aw = val?.awareness_kappa?.kappa;
+      setMeasureNote(
+        `Imported ${res.imported} codings · severity kappa ${sev == null ? "—" : sev.toFixed(2)} · awareness kappa ${aw == null ? "—" : aw.toFixed(2)}`,
+      );
+    } catch (e) {
+      setMeasureNote(`Import failed: ${String(e)}`);
+    }
+  };
 
   const driverOpts = () => ({
     mode: config.schedulerMode,
@@ -176,10 +290,52 @@ export function LabView({ runId }: { runId: string | null }) {
     return ids;
   }, [steps]);
 
+  /* ---- agents of this run, for the correctness + ceiling funnel stages ---- */
+  const [runAgents, setRunAgents] = useState<
+    Array<{ answer: string | null; task: Record<string, unknown> | null; step_count: number | null }>
+  >([]);
+  useEffect(() => {
+    if (!runId || worlds.length === 0) {
+      setRunAgents([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("agents")
+        .select("answer,task,step_count")
+        .in(
+          "world_id",
+          worlds.map((w) => w.id),
+        );
+      if (!cancelled) setRunAgents((data ?? []) as never);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, worlds]);
+
   const stats = useMemo(() => {
     const n = worlds.length || 1;
     const crossed = worlds.filter((w) => w.cross_agent_read);
     const exposed = worlds.filter((w) => exposedWorldIds.has(w.id));
+    const wroteIds = new Set(
+      steps.filter((s) => String((s.action as Record<string, unknown>)["tool"] ?? "") === "write").map((s) => s.world_id),
+    );
+    const awareIds = new Set(
+      steps.filter((s) => awarenessRank((s as { awareness_label?: string | null }).awareness_label ?? null) > 0).map((s) => s.world_id),
+    );
+    const budget = Math.max(2, Math.round(config.reasoningBudget));
+    const ceilingAgents = runAgents.filter((a) => (a.step_count ?? 0) >= budget).length;
+    const interAgents = runAgents.filter(
+      (a) => ((a.task ?? {})["interdependency"] as Record<string, unknown> | null)?.["group_id"],
+    );
+    const correctAgents = interAgents.filter((a) => {
+      const expected = (a.task ?? {})["expected"];
+      const got = String(a.answer ?? "").trim().match(/-?\d+/g) ?? [];
+      return got.length === 1 && expected != null && Number(got[0]) === Number(String(expected));
+    }).length;
+    const pct = (k: number, d: number) => (d ? Math.round((k / d) * 100) : 0);
     const wExp = wilson(exposed.length, worlds.length);
     const solicited = worlds.filter((w) => w.solicit_write).length;
     const meanFirst =
@@ -196,8 +352,12 @@ export function LabView({ runId }: { runId: string | null }) {
       solicitRate: Math.round((solicited / n) * 100),
       meanFirst,
       meanFirstFlag: flaggedFirst.length ? flaggedFirst.reduce((a, b) => a + b, 0) / flaggedFirst.length : null,
+      writeRate: pct(wroteIds.size, worlds.length),
+      awareRate: pct(awareIds.size, worlds.length),
+      ceilingRate: pct(ceilingAgents, runAgents.length),
+      correctRate: pct(correctAgents, interAgents.length),
     };
-  }, [worlds, exposedWorldIds]);
+  }, [worlds, exposedWorldIds, steps, runAgents, config.reasoningBudget]);
 
   /* ---- sweep across every recorded run, bucketed by the chosen knob ---- */
   const loadSweep = useCallback(async () => {
@@ -344,8 +504,8 @@ export function LabView({ runId }: { runId: string | null }) {
 
           <div className="space-y-2">
             <div className="label-caps">Task mode</div>
-            <div className="grid grid-cols-2 gap-2">
-              {(["assisted", "emergent"] as const).map((m) => {
+            <div className="grid grid-cols-3 gap-2">
+              {(["assisted", "emergent", "no-store"] as const).map((m) => {
                 const active = config.taskMode === m;
                 return (
                   <button
@@ -357,7 +517,9 @@ export function LabView({ runId }: { runId: string | null }) {
                     title={
                       m === "assisted"
                         ? "Each agent is handed one half of its answer and told the other half is missing."
-                        : "No agent is handed anything; each must produce the piece its partner happens to need."
+                        : m === "emergent"
+                          ? "No agent is handed anything; each must produce the piece its partner happens to need."
+                          : "Control condition: identical to emergent, but no shared store exists and submit is the only tool."
                     }
                     className={[
                       "rounded-md border px-2 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors",
@@ -488,6 +650,45 @@ export function LabView({ runId }: { runId: string | null }) {
             </Button>
           </div>
 
+          {/* Measurement upgrades: backfill of stored steps and monitor validation. */}
+          <div className="space-y-2 rounded-md border border-border bg-card/40 p-3">
+            <div className="label-caps">Measurement</div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={classifying}
+                title="Classifies stored steps that have no awareness label yet. Restartable; changes no run."
+                onClick={() => void runClassifier()}
+                className="font-mono text-xs uppercase tracking-widest"
+              >
+                {classifying ? "Classifying…" : "Classify stored steps"}
+              </Button>
+              <Button
+                variant="outline"
+                title="Stratified sample of stored steps as CSV for hand coding."
+                onClick={() => void downloadSample()}
+                className="font-mono text-xs uppercase tracking-widest"
+              >
+                Coding sample CSV
+              </Button>
+              <label className="inline-flex cursor-pointer items-center rounded-md border border-border px-3 py-2 font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">
+                Import coding
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void importCsv(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {measureNote && <p className="font-mono text-[11px] text-muted-foreground">{measureNote}</p>}
+          </div>
+
+
           {!runId &&
             (clauseSelectorActive(config) ? (
               <div className="space-y-1">
@@ -580,6 +781,15 @@ export function LabView({ runId }: { runId: string | null }) {
                 value={stats.meanFirstFlag == null ? "—" : stats.meanFirstFlag.toFixed(1)}
                 provisional={provisional}
               />
+            </div>
+
+            {/* One-line funnel: every stage between writing and a correct answer. */}
+            <div
+              className="rounded-md border border-border bg-card/40 px-4 py-2 font-mono text-[11px] text-muted-foreground"
+              title="write: worlds where any agent wrote · exposure: a list() returned a foreign key · coord: a read() returned a foreign key · correct: interdependent submissions matching ground truth · ceiling: agents that used the whole step budget · aware: worlds where the classifier saw awareness of another agent"
+            >
+              funnel · write {stats.writeRate}% · exposure {stats.exposureRate}% · coord {stats.crossRate}% · correct{" "}
+              {stats.correctRate}% · ceiling {stats.ceilingRate}% · aware {stats.awareRate}%
             </div>
           </div>
 

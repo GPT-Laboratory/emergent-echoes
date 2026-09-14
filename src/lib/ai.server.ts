@@ -79,7 +79,7 @@ async function chatAnthropic(opts: {
   maxTokens: number;
   temperature?: number | undefined;
   effort: ReasoningEffort;
-}): Promise<string> {
+}): Promise<ChatResult> {
   const key = process.env["ANTHROPIC_API_KEY"];
   if (!key) throw new Error("Missing ANTHROPIC_API_KEY");
   const apiModel = anthropicApiId(opts.model);
@@ -126,14 +126,36 @@ async function chatAnthropic(opts: {
     throw new GatewayError(res.status, text.slice(0, 400) || res.statusText);
   }
 
-  const data = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
-  return (data.content ?? [])
-    .filter((b) => b?.type === "text" && typeof b.text === "string")
-    .map((b) => b.text)
-    .join("\n");
+  const data = (await res.json()) as {
+    content?: Array<{ type?: string; text?: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
+  };
+  return {
+    text: (data.content ?? [])
+      .filter((b) => b?.type === "text" && typeof b.text === "string")
+      .map((b) => b.text)
+      .join("\n"),
+    usage: {
+      tokens_in: num(data.usage?.input_tokens),
+      tokens_out: num(data.usage?.output_tokens),
+      // The Messages API does not report reasoning tokens separately.
+      tokens_reasoning: null,
+    },
+  };
 }
 
-export async function chat(opts: {
+/** Token usage as the provider reported it; null means "not returned". */
+export type ChatUsage = { tokens_in: number | null; tokens_out: number | null; tokens_reasoning: number | null };
+export type ChatResult = { text: string; usage: ChatUsage };
+
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** Text only — kept for callers that do not record usage. */
+export async function chat(opts: Parameters<typeof chatDetailed>[0]): Promise<string> {
+  return (await chatDetailed(opts)).text;
+}
+
+export async function chatDetailed(opts: {
   model: string;
   system: string;
   user: string;
@@ -141,7 +163,7 @@ export async function chat(opts: {
   temperature?: number;
   /** Locked per experiment; identical on every step. Never left to the gateway. */
   reasoningEffort?: ReasoningEffort;
-}): Promise<string> {
+}): Promise<ChatResult> {
   const limit = opts.maxTokens ?? 700;
   const canSetTemperature = temperatureSupported(opts.model) && opts.temperature != null;
 
@@ -202,8 +224,20 @@ export async function chat(opts: {
 
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      completion_tokens_details?: { reasoning_tokens?: number };
+    };
   };
-  return data.choices?.[0]?.message?.content ?? "";
+  return {
+    text: data.choices?.[0]?.message?.content ?? "",
+    usage: {
+      tokens_in: num(data.usage?.prompt_tokens),
+      tokens_out: num(data.usage?.completion_tokens),
+      tokens_reasoning: num(data.usage?.completion_tokens_details?.reasoning_tokens),
+    },
+  };
 }
 
 /** Tolerant JSON extraction — models occasionally wrap output in prose or fences. */

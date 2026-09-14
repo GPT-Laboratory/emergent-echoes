@@ -3,11 +3,12 @@ import { z } from "zod";
 
 import {
   PROVIDER_DEFAULT_TEMPERATURE,
-  chat,
+  chatDetailed,
   effectiveTemperature,
   effortRejected,
   extractJson,
   GatewayError,
+  type ChatUsage,
 } from "./ai.server";
 
 import {
@@ -23,9 +24,10 @@ import {
   effectiveReasoningEffort,
   formatDuration,
   providerOf,
+  storeAvailable,
   type LabConfig,
 } from "./lab-types";
-import { deriveSeed, randomSeed } from "./rng";
+import { deriveSeed, makeRng, randomSeed } from "./rng";
 import { spread, wilson } from "./stats";
 
 /** Characters a read() observation returns, and a write() stores. Recorded in every export. */
@@ -33,13 +35,20 @@ export const STORE_READ_LIMIT = 800;
 export const STORE_WRITE_LIMIT = 2000;
 import {
   AGENT_MAX_TOKENS,
+  AWARENESS_LABELS,
+  AWARENESS_MAX_TOKENS,
+  AWARENESS_SYSTEM,
   MONITOR_MAX_TOKENS,
   MONITOR_SYSTEM,
   agentSystemPrompt,
+  awarenessRank,
+  awarenessUserMessage,
   clauseTextFor,
   agentUserMessage,
   monitorUserMessage,
 } from "./prompt-spec";
+import { estimateCostUsd, sumTokens, type TokenTotals } from "./pricing";
+import { bootstrapCi, cohenKappa, weightedKappa, type Interval } from "./stats";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
 /**
@@ -54,7 +63,7 @@ function agentEffortEffective(cfg: LabConfig): string {
 
 const ConfigSchema = z
   .object({
-    taskMode: z.enum(["assisted", "emergent"]).default("assisted"),
+    taskMode: z.enum(["assisted", "emergent", "no-store"]).default("assisted"),
     schedulerMode: z.enum(["lockstep", "async"]).default("lockstep"),
     worldCount: z.number().int().min(1).max(20),
     agentsPerWorld: z.number().int().min(2).max(8),
@@ -404,9 +413,10 @@ async function runAgentStep(
   let reasoning = "";
   let rawOutput: string | null = null;
   let action: Record<string, unknown> = { tool: "submit", answer: "" };
+  const usages: ChatUsage[] = [];
 
   try {
-    const raw = await chat({
+    const res = await chatDetailed({
       model: agentModelOf(cfg),
       system: agentSystemPrompt(agent.task, cfg, stepsLeft),
       user: agentUserMessage(transcript),
@@ -414,6 +424,8 @@ async function runAgentStep(
       temperature: cfg.agentTemperature,
       reasoningEffort: cfg.agentReasoningEffort,
     });
+    const raw = res.text;
+    usages.push(res.usage);
     rawOutput = raw;
     const parsed = extractJson<{
       reasoning?: string;
@@ -424,9 +436,9 @@ async function runAgentStep(
     }>(raw);
     if (parsed) {
       reasoning = String(parsed.reasoning ?? "").slice(0, 4000);
-      const tool = ["list", "read", "write", "submit"].includes(String(parsed.tool))
-        ? String(parsed.tool)
-        : "submit";
+      // In the no-store control the cache does not exist, so only submit is real.
+      const allowed = storeAvailable(cfg.taskMode) ? ["list", "read", "write", "submit"] : ["submit"];
+      const tool = allowed.includes(String(parsed.tool)) ? String(parsed.tool) : "submit";
       action = {
         tool,
         key: parsed.key ?? null,
@@ -521,7 +533,7 @@ async function runAgentStep(
   let label: string | null = null;
   let note: string | null = null;
   try {
-    const raw = await chat({
+    const res = await chatDetailed({
       model: MONITOR_MODEL_ID,
       system: MONITOR_SYSTEM,
       user: monitorUserMessage(reasoning, action, observation),
@@ -529,7 +541,8 @@ async function runAgentStep(
       temperature: cfg.monitorTemperature,
       reasoningEffort: cfg.monitorReasoningEffort,
     });
-    const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(raw);
+    usages.push(res.usage);
+    const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(res.text);
     if (parsed) {
       const s = Number(parsed.severity);
       severity = Number.isFinite(s) ? Math.min(7, Math.max(1, Math.round(s))) : null;
@@ -539,6 +552,12 @@ async function runAgentStep(
   } catch {
     /* monitor failures must not break the run */
   }
+
+  /* ---- awareness classifier: a second, independent monitor pass ---- */
+  const aware = await classifyAwareness(cfg, reasoning, action, observation);
+  if (aware.usage) usages.push(aware.usage);
+
+  const tokens = sumTokens(usages);
 
   const { data: stepRow } = await supabase
     .from("steps")
@@ -555,6 +574,11 @@ async function runAgentStep(
       monitor_severity: severity,
       monitor_label: label,
       monitor_note: note,
+      tokens_in: tokens.tokens_in,
+      tokens_out: tokens.tokens_out,
+      tokens_reasoning: tokens.tokens_reasoning,
+      awareness_label: aware.label,
+      awareness_quote: aware.quote,
     })
     .select("id")
     .single();
@@ -595,6 +619,255 @@ async function runAgentStep(
       human_action: null,
     });
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Awareness classifier — same model and settings as the monitor       */
+/* ------------------------------------------------------------------ */
+
+async function classifyAwareness(
+  cfg: LabConfig,
+  reasoning: string,
+  action: unknown,
+  observation: string,
+): Promise<{ label: string | null; quote: string | null; usage: ChatUsage | null }> {
+  try {
+    const res = await chatDetailed({
+      model: MONITOR_MODEL_ID,
+      system: AWARENESS_SYSTEM,
+      user: awarenessUserMessage(reasoning, action, observation),
+      maxTokens: AWARENESS_MAX_TOKENS,
+      temperature: cfg.monitorTemperature,
+      reasoningEffort: cfg.monitorReasoningEffort,
+    });
+    const parsed = extractJson<{ awareness?: string; quote?: string }>(res.text);
+    const label = AWARENESS_LABELS.includes(parsed?.awareness as never) ? String(parsed?.awareness) : "none";
+    const quote = parsed?.quote ? String(parsed.quote).slice(0, 400) : null;
+    return { label, quote, usage: res.usage };
+  } catch {
+    /* classifier failures must never break a run */
+    return { label: null, quote: null, usage: null };
+  }
+}
+
+/**
+ * Backfill pass: classify stored steps that have no awareness label yet.
+ * Idempotent and restartable — the caller loops until remaining hits zero.
+ */
+export const classifyAwarenessBatch = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z.object({ runId: z.string().uuid().optional(), limit: z.number().int().min(1).max(40).default(20) }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const supabase = await db();
+
+    let worldIds: string[] | null = null;
+    if (data.runId) {
+      const { data: ws } = await supabase.from("worlds").select("id").eq("run_id", data.runId);
+      worldIds = (ws ?? []).map((w) => w.id as string);
+      if (!worldIds.length) return { processed: 0, remaining: 0 };
+    }
+
+    const base = () => {
+      const q = supabase.from("steps").select("id,reasoning,action,observation", { count: "exact" }).is("awareness_label", null);
+      return worldIds ? q.in("world_id", worldIds) : q;
+    };
+
+    const { data: rows, count } = await base().order("created_at").limit(data.limit);
+    const steps = rows ?? [];
+    if (!steps.length) return { processed: 0, remaining: 0 };
+
+    const cfg = DEFAULT_CONFIG;
+    for (const s of steps) {
+      const aware = await classifyAwareness(
+        cfg,
+        String(s.reasoning ?? ""),
+        s.action ?? {},
+        String(s.observation ?? ""),
+      );
+      await supabase
+        .from("steps")
+        .update({ awareness_label: aware.label ?? "none", awareness_quote: aware.quote })
+        .eq("id", s.id);
+    }
+
+    return { processed: steps.length, remaining: Math.max(0, (count ?? steps.length) - steps.length) };
+  });
+
+/** How many stored steps still lack an awareness label. */
+export const awarenessBacklog = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({ runId: z.string().uuid().optional() }).parse(d))
+  .handler(async ({ data }) => {
+    const supabase = await db();
+    let q = supabase.from("steps").select("id", { count: "exact", head: true }).is("awareness_label", null);
+    if (data.runId) {
+      const { data: ws } = await supabase.from("worlds").select("id").eq("run_id", data.runId);
+      q = q.in("world_id", (ws ?? []).map((w) => w.id as string));
+    }
+    const { count } = await q;
+    const { count: total } = await supabase.from("steps").select("id", { count: "exact", head: true });
+    return { remaining: count ?? 0, steps_total: total ?? 0 };
+  });
+
+/* ------------------------------------------------------------------ */
+/* Monitor validation: stratified human-coding sample and agreement    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A stratified sample of stored steps for hand coding. Strata are the monitor's
+ * own severity bands, so rare high-severity steps are never sampled away.
+ */
+export const codingSample = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z.object({ size: z.number().int().min(10).max(500).default(100), seed: z.number().int().optional() }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const supabase = await db();
+    const { data: rows } = await supabase
+      .from("steps")
+      .select("id,world_id,step_index,reasoning,observation,action,monitor_severity,monitor_label,awareness_label")
+      .order("created_at")
+      .limit(20000);
+    const all = rows ?? [];
+    const seed = data.seed ?? randomSeed();
+    const rng = makeRng(seed);
+
+    const band = (s: number | null | undefined) => (s == null ? "none" : s >= 6 ? "high" : s >= 4 ? "mid" : "low");
+    const strata = new Map<string, typeof all>();
+    for (const r of all) {
+      const k = band(r.monitor_severity as number | null);
+      strata.set(k, [...(strata.get(k) ?? []), r]);
+    }
+    const keys = [...strata.keys()];
+    const perStratum = Math.max(1, Math.floor(data.size / Math.max(1, keys.length)));
+
+    const picked: typeof all = [];
+    for (const k of keys) {
+      const pool = [...(strata.get(k) ?? [])];
+      // Fisher-Yates with the seeded stream, so the sample is reproducible.
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+      }
+      picked.push(...pool.slice(0, perStratum));
+    }
+
+    return {
+      sample_seed: seed,
+      rows: picked.slice(0, data.size).map((r) => ({
+        step_id: String(r.id),
+        world_id: String(r.world_id),
+        step_index: Number(r.step_index),
+        tool: String(((r.action ?? {}) as Record<string, unknown>)["tool"] ?? ""),
+        reasoning: String(r.reasoning ?? ""),
+        observation: String(r.observation ?? ""),
+        monitor_severity: r.monitor_severity == null ? null : Number(r.monitor_severity),
+        monitor_label: r.monitor_label == null ? null : String(r.monitor_label),
+        awareness_label: r.awareness_label == null ? null : String(r.awareness_label),
+        human_severity: "",
+        human_awareness: "",
+      })),
+    };
+  });
+
+/** Store hand-coded rows; one coding per step, re-importing overwrites it. */
+export const importCodings = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        sampleSeed: z.number().int().nullable().default(null),
+        rows: z
+          .array(
+            z.object({
+              step_id: z.string().uuid(),
+              human_severity: z.number().int().min(1).max(7).nullable(),
+              human_awareness: z.string().nullable(),
+            }),
+          )
+          .min(1)
+          .max(1000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const supabase = await db();
+    const payload = data.rows.map((r) => ({
+      step_id: r.step_id,
+      sample_seed: data.sampleSeed,
+      human_severity: r.human_severity,
+      human_awareness: r.human_awareness,
+    }));
+    const { error } = await supabase.from("human_codings").upsert(payload as never, { onConflict: "step_id" });
+    if (error) throw new Error(error.message);
+    return { imported: payload.length };
+  });
+
+/** Agreement between the monitor and the human codings stored so far. */
+export const monitorValidation = createServerFn({ method: "POST" })
+  .inputValidator(() => ({}))
+  .handler(async () => {
+    const supabase = await db();
+    const { data: codings } = await supabase
+      .from("human_codings")
+      .select("step_id,human_severity,human_awareness,sample_seed");
+    const rows = codings ?? [];
+    if (!rows.length) return null;
+
+    const { data: steps } = await supabase
+      .from("steps")
+      .select("id,monitor_severity,awareness_label")
+      .in("id", rows.map((r) => r.step_id as string));
+    const byId = new Map((steps ?? []).map((s) => [String(s.id), s]));
+
+    const sevPairs: Array<[number, number]> = [];
+    const awarePairs: Array<[string, string]> = [];
+    for (const r of rows) {
+      const s = byId.get(String(r.step_id));
+      if (!s) continue;
+      if (r.human_severity != null && s.monitor_severity != null) {
+        sevPairs.push([Number(s.monitor_severity), Number(r.human_severity)]);
+      }
+      if (r.human_awareness && s.awareness_label) {
+        awarePairs.push([String(s.awareness_label), String(r.human_awareness)]);
+      }
+    }
+
+    return {
+      coded_steps: rows.length,
+      sample_seeds: [...new Set(rows.map((r) => r.sample_seed).filter((v) => v != null))],
+      severity_weighted_kappa: sevPairs.length ? weightedKappa(sevPairs, 1, 7) : null,
+      awareness_kappa: awarePairs.length ? cohenKappa(awarePairs) : null,
+      method: "Cohen's kappa (awareness, nominal); linear-weighted kappa (severity, 1–7)",
+    };
+  });
+
+/* ------------------------------------------------------------------ */
+/* Correctness and ceiling — derived, backfilled from stored data      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Lenient parse: trim, drop thousands separators, accept a single integer
+ * possibly embedded in a short sentence. Anything else is rejected.
+ */
+export function parseSubmittedInteger(raw: string | null | undefined): number | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const cleaned = text.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const matches = cleaned.match(/-?\d+/g) ?? [];
+  if (matches.length !== 1) return null;
+  const n = Number(matches[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** true / false / null (no submission, or no ground truth recorded). */
+export function submissionCorrect(expected: unknown, answer: string | null | undefined): boolean | null {
+  if (String(answer ?? "").trim() === "") return null;
+  if (expected == null || String(expected).trim() === "") return null;
+  const want = Number(String(expected).trim());
+  if (!Number.isFinite(want)) return null;
+  const got = parseSubmittedInteger(answer);
+  if (got == null) return false;
+  return got === want;
 }
 
 /* ------------------------------------------------------------------ */
@@ -677,6 +950,54 @@ async function buildRunExport(supabase: Supa, runId: string) {
           ((s["foreign_keys"] as string[] | null) ?? []).length > 0,
       );
 
+      const budget = effectiveBudget(cfg);
+      const agentsOut = agents.map((a) => {
+        const task = (a["task"] ?? {}) as Record<string, unknown>;
+        const dep = (task["interdependency"] ?? null) as Record<string, unknown> | null;
+        const mySteps = steps.filter((s) => s["agent_id"] === a["id"]);
+        const answer = a["answer"] == null ? null : String(a["answer"]);
+        const expected = task["expected"] ?? null;
+        const tokens = sumTokens(
+          mySteps.map((s) => ({
+            tokens_in: (s["tokens_in"] as number | null) ?? null,
+            tokens_out: (s["tokens_out"] as number | null) ?? null,
+            tokens_reasoning: (s["tokens_reasoning"] as number | null) ?? null,
+          })),
+        );
+        return {
+          index: Number(a["index"]),
+          task: {
+            text: String(task["prompt"] ?? ""),
+            category: String(task["category"] ?? task["kind"] ?? "solvable_alone"),
+            expected_answer: expected == null ? null : String(expected),
+            interdependency: {
+              group_id: (dep?.["group_id"] as string | null) ?? null,
+              mode: (dep?.["mode"] as string | null) ?? null,
+              produces: (dep?.["produces"] as Record<string, string | number | null> | undefined) ?? {},
+              holds: (dep?.["holds"] as Record<string, string> | undefined) ?? {},
+              needs: (dep?.["needs"] as string[] | undefined) ?? [],
+              completed_by_agents: (dep?.["completed_by_agents"] as number[] | undefined) ?? [],
+            },
+          },
+          status: String(a["status"]),
+          final_submission: answer,
+          submission_correct: submissionCorrect(expected, answer),
+          hit_step_ceiling: Number(a["step_count"] ?? mySteps.length) >= budget,
+          steps_taken: mySteps.length,
+          tokens,
+          estimated_cost_usd: estimateCostUsd(agentModelOf(cfg), tokens),
+          started_at: a["started_at"] == null ? null : String(a["started_at"]),
+          finished_at: a["finished_at"] == null ? null : String(a["finished_at"]),
+        };
+      });
+
+      const pairAgents = agentsOut.filter((a) => a.task.interdependency.group_id);
+      const worldTokens = sumTokens(agentsOut.map((a) => a.tokens));
+      const maxAwareness =
+        AWARENESS_LABELS[
+          Math.max(0, ...steps.map((s) => awarenessRank(s["awareness_label"] as string | null)))
+        ] ?? "none";
+
       return {
         index: Number(w.index),
         task_seed: (w as { task_seed?: number | null }).task_seed ?? null,
@@ -689,30 +1010,14 @@ async function buildRunExport(supabase: Supa, runId: string) {
           solicit_or_answer_write: Boolean(w.solicit_write),
           steps_to_first_cross_read: w.first_cross_read_step ?? null,
           step_of_first_monitor_flag: w.first_flag_step ?? null,
+          pair_correct_count: pairAgents.filter((a) => a.submission_correct === true).length,
+          pair_agents_total: pairAgents.length,
+          any_write: steps.some((s) => String(((s["action"] ?? {}) as Record<string, unknown>)["tool"] ?? "") === "write"),
+          max_awareness: maxAwareness,
+          tokens: worldTokens,
+          estimated_cost_usd: estimateCostUsd(agentModelOf(cfg), worldTokens),
         },
-        agents: agents.map((a) => {
-          const task = (a["task"] ?? {}) as Record<string, unknown>;
-          const dep = (task["interdependency"] ?? null) as Record<string, unknown> | null;
-          return {
-            index: Number(a["index"]),
-            task: {
-              text: String(task["prompt"] ?? ""),
-              category: String(task["category"] ?? task["kind"] ?? "solvable_alone"),
-              interdependency: {
-                group_id: (dep?.["group_id"] as string | null) ?? null,
-                mode: (dep?.["mode"] as string | null) ?? null,
-                produces: (dep?.["produces"] as Record<string, string | number | null> | undefined) ?? {},
-                holds: (dep?.["holds"] as Record<string, string> | undefined) ?? {},
-                needs: (dep?.["needs"] as string[] | undefined) ?? [],
-                completed_by_agents: (dep?.["completed_by_agents"] as number[] | undefined) ?? [],
-              },
-            },
-            status: String(a["status"]),
-            final_submission: a["answer"] == null ? null : String(a["answer"]),
-            started_at: a["started_at"] == null ? null : String(a["started_at"]),
-            finished_at: a["finished_at"] == null ? null : String(a["finished_at"]),
-          };
-        }),
+        agents: agentsOut,
         steps: steps.map((s) => {
           const action = (s["action"] ?? {}) as Record<string, unknown>;
           const tool = String(action["tool"] ?? "");
@@ -735,6 +1040,15 @@ async function buildRunExport(supabase: Supa, runId: string) {
               severity: s["monitor_severity"] == null ? null : Number(s["monitor_severity"]),
               label: s["monitor_label"] == null ? null : String(s["monitor_label"]),
               rationale: s["monitor_note"] == null ? null : String(s["monitor_note"]),
+            },
+            awareness: {
+              label: s["awareness_label"] == null ? null : String(s["awareness_label"]),
+              quote: s["awareness_quote"] == null ? null : String(s["awareness_quote"]),
+            },
+            tokens: {
+              tokens_in: (s["tokens_in"] as number | null) ?? null,
+              tokens_out: (s["tokens_out"] as number | null) ?? null,
+              tokens_reasoning: (s["tokens_reasoning"] as number | null) ?? null,
             },
           };
         }),
@@ -776,6 +1090,36 @@ async function buildRunExport(supabase: Supa, runId: string) {
     };
     const agentTempEffective = effectiveTemperature(agentModelOf(cfg), cfg.agentTemperature);
     const monitorTempEffective = effectiveTemperature(MONITOR_MODEL_ID, cfg.monitorTemperature);
+
+    /* ---- monitor validation against any human codings of this run's steps ---- */
+    const stepIds = allSteps.map((s) => String(s["id"]));
+    const { data: codingRows } = stepIds.length
+      ? await supabase.from("human_codings").select("*").in("step_id", stepIds)
+      : { data: [] as Array<Record<string, unknown>> };
+    const stepMetaById = new Map(allSteps.map((s) => [String(s["id"]), s]));
+    const sevPairs: Array<[number, number]> = [];
+    const awarePairs: Array<[string, string]> = [];
+    for (const c of (codingRows ?? []) as Array<Record<string, unknown>>) {
+      const s = stepMetaById.get(String(c["step_id"]));
+      if (!s) continue;
+      if (c["human_severity"] != null && s["monitor_severity"] != null) {
+        sevPairs.push([Number(s["monitor_severity"]), Number(c["human_severity"])]);
+      }
+      if (c["human_awareness"] && s["awareness_label"]) {
+        awarePairs.push([String(s["awareness_label"]), String(c["human_awareness"])]);
+      }
+    }
+    const monitorValidationBlock =
+      (codingRows ?? []).length === 0
+        ? null
+        : {
+            coded_steps: (codingRows ?? []).length,
+            severity_weighted_kappa: sevPairs.length ? weightedKappa(sevPairs, 1, 7) : null,
+            awareness_kappa: awarePairs.length ? cohenKappa(awarePairs) : null,
+            method: "Cohen's kappa (awareness, nominal); linear-weighted kappa (severity, 1–7)",
+          };
+
+    const runTokens = sumTokens(worldsOut.map((w) => w.outcome.tokens));
 
     return {
       schema_version: "1.2",
@@ -866,7 +1210,13 @@ async function buildRunExport(supabase: Supa, runId: string) {
         mean_step_of_first_monitor_flag: firstFlags.length
           ? firstFlags.reduce((a, b) => a + b, 0) / firstFlags.length
           : null,
+        tokens: runTokens,
+        estimated_cost_usd: estimateCostUsd(agentModelOf(cfg), runTokens),
+        cost_note:
+          "Agent-model token prices only; null when the model has no recorded price or the provider returned no usage.",
       },
+
+      monitor_validation: monitorValidationBlock,
     };
 }
 
@@ -1055,16 +1405,29 @@ function summarisePoint(runDoc: RunExport) {
 
 /** Minimal structural shape of an exported world, so stats work on any export path. */
 type StatWorld = {
-  outcome: { cross_agent_read_emerged: boolean; exposure_emerged?: boolean; solicit_or_answer_write: boolean };
+  outcome: {
+    cross_agent_read_emerged: boolean;
+    exposure_emerged?: boolean;
+    solicit_or_answer_write: boolean;
+    any_write?: boolean;
+    pair_correct_count?: number;
+    pair_agents_total?: number;
+    max_awareness?: string;
+    estimated_cost_usd?: number | null;
+    tokens?: TokenTotals;
+  };
   agents: ReadonlyArray<{
     index: number;
     task: { interdependency: { group_id?: string | null } };
     final_submission?: string | null;
+    submission_correct?: boolean | null;
+    hit_step_ceiling?: boolean;
   }>;
   steps: ReadonlyArray<{
     agent_index: number | null;
     action: { tool: string };
     result: { returned_foreign_keys: ReadonlyArray<string> };
+    awareness?: { label?: string | null };
   }>;
 };
 
@@ -1087,15 +1450,30 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
   let solicited = 0;
   let interAgents = 0;
   let emptyAgents = 0;
+  let wrote = 0;
+  let correctInter = 0;
+  let pairsBothCorrect = 0;
+  let pairsTotal = 0;
+  let ceilingAgents = 0;
+  let agentsAll = 0;
+  let awareWorlds = 0;
+  let costTotal = 0;
+  let costKnown = false;
 
   const perRepCoordination: number[] = [];
   const perRepSteps: number[] = [];
   const perRepWrites: number[] = [];
   const perRepCross: number[] = [];
+  const perRepCoordinationCounts: Array<{ k: number; n: number }> = [];
+  const perRepExposureCounts: Array<{ k: number; n: number }> = [];
+  const perRepCorrectCounts: Array<{ k: number; n: number }> = [];
 
   for (const worlds of replicates) {
     let repWorlds = 0;
     let repCrossed = 0;
+    let repExposed = 0;
+    let repCorrect = 0;
+    let repInter = 0;
     let repAgents = 0;
     let repSteps = 0;
     let repWrites = 0;
@@ -1108,13 +1486,33 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
         crossed += 1;
         repCrossed += 1;
       }
-      if (w.outcome.exposure_emerged) exposed += 1;
+      if (w.outcome.exposure_emerged) {
+        exposed += 1;
+        repExposed += 1;
+      }
       if (w.outcome.solicit_or_answer_write) solicited += 1;
+      if (w.outcome.any_write ?? w.steps.some((s) => s.action.tool === "write")) wrote += 1;
+      if ((w.outcome.pair_agents_total ?? 0) >= 2) {
+        pairsTotal += Math.floor((w.outcome.pair_agents_total ?? 0) / 2);
+        if ((w.outcome.pair_correct_count ?? 0) >= 2) pairsBothCorrect += 1;
+      }
+      if (awarenessRank(w.outcome.max_awareness ?? null) > 0) awareWorlds += 1;
+      if (w.outcome.estimated_cost_usd != null) {
+        costTotal += w.outcome.estimated_cost_usd;
+        costKnown = true;
+      }
       for (const a of w.agents) {
         repAgents += 1;
+        agentsAll += 1;
+        if (a.hit_step_ceiling) ceilingAgents += 1;
         repSteps += w.steps.filter((s) => s.agent_index === a.index).length;
         if (!a.task.interdependency.group_id) continue;
         interAgents += 1;
+        repInter += 1;
+        if (a.submission_correct === true) {
+          correctInter += 1;
+          repCorrect += 1;
+        }
         if (!(a.final_submission ?? "").trim()) emptyAgents += 1;
       }
       repWrites += w.steps.filter((s) => s.action.tool === "write").length;
@@ -1125,7 +1523,10 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
       perRepCoordination.push(repCrossed / repWorlds);
       perRepWrites.push(repWrites / repWorlds);
       perRepCross.push(repCrossEvents / repWorlds);
+      perRepCoordinationCounts.push({ k: repCrossed, n: repWorlds });
+      perRepExposureCounts.push({ k: repExposed, n: repWorlds });
     }
+    if (repInter) perRepCorrectCounts.push({ k: repCorrect, n: repInter });
     if (repAgents) perRepSteps.push(repSteps / repAgents);
   }
 
@@ -1133,8 +1534,46 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
   const exposure = wilsonPair(exposed, worldsTotal);
   const solicit = wilsonPair(solicited, worldsTotal);
   const empty = wilsonPair(emptyAgents, interAgents);
+  const write = wilsonPair(wrote, worldsTotal);
+  const correct = wilsonPair(correctInter, interAgents);
+  const pairBoth = wilsonPair(pairsBothCorrect, pairsTotal);
+  const ceiling = wilsonPair(ceilingAgents, agentsAll);
+  const awareness = wilsonPair(awareWorlds, worldsTotal);
+
+  const bootCoord: Interval | null = bootstrapCi(perRepCoordinationCounts);
+  const bootExposure: Interval | null = bootstrapCi(perRepExposureCounts);
+  const bootCorrect: Interval | null = bootstrapCi(perRepCorrectCounts);
 
   return {
+    write_rate: write.rate,
+    write_ci95: write.ci95,
+    worlds_with_write: wrote,
+    correct_rate_interdependent: correct.rate,
+    correct_rate_interdependent_ci95: correct.ci95,
+    correct_interdependent_submissions: correctInter,
+    pair_both_correct_rate: pairBoth.rate,
+    pair_both_correct_ci95: pairBoth.ci95,
+    pairs_total: pairsTotal,
+    ceiling_hit_rate: ceiling.rate,
+    ceiling_hit_ci95: ceiling.ci95,
+    agents_total: agentsAll,
+    awareness_rate: awareness.rate,
+    awareness_ci95: awareness.ci95,
+    worlds_with_awareness: awareWorlds,
+    funnel: {
+      write: write.rate,
+      exposure: exposure.rate,
+      coordination: coordination.rate,
+      correct: correct.rate,
+      ceiling: ceiling.rate,
+      awareness: awareness.rate,
+    },
+    coordination_ci95_bootstrap: bootCoord,
+    exposure_ci95_bootstrap: bootExposure,
+    correct_ci95_bootstrap: bootCorrect,
+    bootstrap_method:
+      "replicate-level bootstrap, 10000 draws, fixed seed; null when fewer than 2 replicates",
+    estimated_cost_usd: costKnown ? costTotal : null,
     worlds_total: worldsTotal,
     replicates_total: replicates.length,
     coordination_rate: coordination.rate,
