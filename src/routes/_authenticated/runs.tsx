@@ -5,6 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { Button } from "@/components/ui/button";
 import {
+  downloadPromptsAppendix,
   downloadRunJson,
   downloadSweepJson,
   runFileNameFromConfig,
@@ -13,7 +14,8 @@ import {
 import { exportExperiment, exportRun } from "@/lib/lab.functions";
 
 import { supabase } from "@/integrations/supabase/client";
-import { AGENT_MODEL_ID, formatDuration, type LabConfig } from "@/lib/lab-types";
+import { AGENT_MODEL_ID, DEFAULT_CONFIG, formatDuration, type LabConfig } from "@/lib/lab-types";
+import { buildPromptsAppendix } from "@/lib/prompt-spec";
 import { wilson } from "@/lib/stats";
 
 export const Route = createFileRoute("/_authenticated/runs")({
