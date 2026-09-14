@@ -369,6 +369,25 @@ function Runs() {
                       <tr className="bg-background/60">
                         <td colSpan={9} className="px-3 py-2">
                           <RunHeader run={item.run as unknown as RunRow} />
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              const cfg = { ...DEFAULT_CONFIG, ...(item.run.config ?? {}) } as LabConfig;
+                              downloadPromptsAppendix(
+                                buildPromptsAppendix(cfg, {
+                                  runId: item.run.id,
+                                  startedAt: item.run.started_at ?? item.run.created_at,
+                                  label: cfg.runNote,
+                                }),
+                                item.run.started_at ?? item.run.created_at,
+                                cfg,
+                              );
+                            }}
+                            className="mt-2 font-mono text-[10px] lowercase tracking-normal"
+                          >
+                            Prompt appendix (.md)
+                          </Button>
                         </td>
                       </tr>
                     )}
