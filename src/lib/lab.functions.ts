@@ -31,6 +31,8 @@ const ConfigSchema = z.object({
   replicates: z.number().int().min(1).max(10).default(3),
   baseSeed: z.number().int().nullable().default(null),
   sameTasksAcrossReplicates: z.boolean().default(false),
+  agentReasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
+  monitorReasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
 });
 
 async function db() {
