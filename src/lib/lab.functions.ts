@@ -1046,7 +1046,7 @@ type StatWorld = {
     final_submission?: string | null;
   }>;
   steps: ReadonlyArray<{
-    agent_index: number;
+    agent_index: number | null;
     action: { tool: string };
     result: { returned_foreign_keys: ReadonlyArray<string> };
   }>;
