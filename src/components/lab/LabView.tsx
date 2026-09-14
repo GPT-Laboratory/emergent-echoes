@@ -48,6 +48,12 @@ export function LabView({ runId }: { runId: string | null }) {
   const doSweep = useServerFn(createSweep);
   const doActivate = useServerFn(activateRun);
   const doFinish = useServerFn(finishExperiment);
+  const doStepAgent = useServerFn(stepAgent);
+
+  const driverOpts = () => ({
+    mode: config.schedulerMode,
+    stepAgent: (a: { data: { agentId: string } }) => doStepAgent(a),
+  });
 
   const driving = useSyncExternalStore(
     subscribeDrivers,
