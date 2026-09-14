@@ -10,7 +10,14 @@ import {
   extractJson,
   GatewayError,
 } from "./ai.server";
-import { DEFAULT_CONFIG, MONITOR_LABELS, formatDuration, type LabConfig } from "./lab-types";
+import {
+  DEFAULT_CONFIG,
+  MONITOR_LABELS,
+  REASONING_EFFORTS,
+  effectiveReasoningEffort,
+  formatDuration,
+  type LabConfig,
+} from "./lab-types";
 import { deriveSeed, randomSeed } from "./rng";
 import { spread, wilson } from "./stats";
 import { generateWorldTasks, type AgentTask } from "./tasks";
