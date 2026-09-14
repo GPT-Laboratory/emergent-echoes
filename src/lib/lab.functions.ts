@@ -1124,6 +1124,13 @@ export const exportExperiment = createServerFn({ method: "POST" })
           agent_temperature_effective: agentTempEffective,
           monitor_temperature_effective: monitorTempEffective,
           provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
+          agent_reasoning_effort: cfg.agentReasoningEffort,
+          monitor_reasoning_effort: cfg.monitorReasoningEffort,
+          agent_reasoning_effort_effective: effectiveReasoningEffort(AGENT_MODEL, cfg.agentReasoningEffort),
+          monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL, cfg.monitorReasoningEffort),
+          reasoning_effort_locked: true,
+          reasoning_effort_note:
+            "Sent explicitly on every model call and held constant for all steps and all sweep points. 'gateway-default' would mean the model rejected the parameter and the gateway default applied.",
         },
         models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
         sweep_variable: "persistence",
