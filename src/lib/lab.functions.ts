@@ -22,6 +22,12 @@ import {
 } from "./lab-types";
 import { deriveSeed, randomSeed } from "./rng";
 import { spread, wilson } from "./stats";
+import {
+  MONITOR_SYSTEM,
+  agentSystemPrompt,
+  agentUserMessage,
+  monitorUserMessage,
+} from "./prompt-spec";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
 const ConfigSchema = z
