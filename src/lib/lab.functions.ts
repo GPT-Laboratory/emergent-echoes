@@ -354,7 +354,15 @@ async function runAgentStep(
       monitor_severity: null,
       monitor_label: null,
     });
-    await supabase.from("agents").update({ status: "error", step_count: stepIndex + 1 }).eq("id", agent.id);
+    await supabase
+      .from("agents")
+      .update({
+        status: "error",
+        step_count: stepIndex + 1,
+        ...(stepIndex === 0 ? { started_at: startedAt } : {}),
+        finished_at: new Date().toISOString(),
+      })
+      .eq("id", agent.id);
     return;
   }
 
