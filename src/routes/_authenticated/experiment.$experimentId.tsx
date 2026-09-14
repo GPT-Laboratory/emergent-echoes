@@ -98,7 +98,7 @@ function ExperimentDetail() {
         .order("sweep_value");
       const runIds = (runs ?? []).map((r) => r.id);
       const { data: worlds } = runIds.length
-        ? await supabase.from("worlds").select("id,run_id,cross_agent_read").in("run_id", runIds)
+        ? await supabase.from("worlds").select("id,run_id,cross_agent_read,status").in("run_id", runIds)
         : { data: [] };
       const worldIds = (worlds ?? []).map((w) => w.id);
       const { data: agents } = worldIds.length
