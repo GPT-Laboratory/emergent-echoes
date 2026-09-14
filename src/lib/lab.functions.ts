@@ -710,6 +710,138 @@ export const awarenessBacklog = createServerFn({ method: "POST" })
   });
 
 /* ------------------------------------------------------------------ */
+/* Monitor validation: stratified human-coding sample and agreement    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A stratified sample of stored steps for hand coding. Strata are the monitor's
+ * own severity bands, so rare high-severity steps are never sampled away.
+ */
+export const codingSample = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z.object({ size: z.number().int().min(10).max(500).default(100), seed: z.number().int().optional() }).parse(d),
+  )
+  .handler(async ({ data }) => {
+    const supabase = await db();
+    const { data: rows } = await supabase
+      .from("steps")
+      .select("id,world_id,step_index,reasoning,observation,action,monitor_severity,monitor_label,awareness_label")
+      .order("created_at")
+      .limit(20000);
+    const all = rows ?? [];
+    const seed = data.seed ?? randomSeed();
+    const rng = makeRng(seed);
+
+    const band = (s: number | null | undefined) => (s == null ? "none" : s >= 6 ? "high" : s >= 4 ? "mid" : "low");
+    const strata = new Map<string, typeof all>();
+    for (const r of all) {
+      const k = band(r.monitor_severity as number | null);
+      strata.set(k, [...(strata.get(k) ?? []), r]);
+    }
+    const keys = [...strata.keys()];
+    const perStratum = Math.max(1, Math.floor(data.size / Math.max(1, keys.length)));
+
+    const picked: typeof all = [];
+    for (const k of keys) {
+      const pool = [...(strata.get(k) ?? [])];
+      // Fisher-Yates with the seeded stream, so the sample is reproducible.
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+      }
+      picked.push(...pool.slice(0, perStratum));
+    }
+
+    return {
+      sample_seed: seed,
+      rows: picked.slice(0, data.size).map((r) => ({
+        step_id: String(r.id),
+        world_id: String(r.world_id),
+        step_index: Number(r.step_index),
+        tool: String(((r.action ?? {}) as Record<string, unknown>)["tool"] ?? ""),
+        reasoning: String(r.reasoning ?? ""),
+        observation: String(r.observation ?? ""),
+        monitor_severity: r.monitor_severity == null ? null : Number(r.monitor_severity),
+        monitor_label: r.monitor_label == null ? null : String(r.monitor_label),
+        awareness_label: r.awareness_label == null ? null : String(r.awareness_label),
+        human_severity: "",
+        human_awareness: "",
+      })),
+    };
+  });
+
+/** Store hand-coded rows; one coding per step, re-importing overwrites it. */
+export const importCodings = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        sampleSeed: z.number().int().nullable().default(null),
+        rows: z
+          .array(
+            z.object({
+              step_id: z.string().uuid(),
+              human_severity: z.number().int().min(1).max(7).nullable(),
+              human_awareness: z.string().nullable(),
+            }),
+          )
+          .min(1)
+          .max(1000),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const supabase = await db();
+    const payload = data.rows.map((r) => ({
+      step_id: r.step_id,
+      sample_seed: data.sampleSeed,
+      human_severity: r.human_severity,
+      human_awareness: r.human_awareness,
+    }));
+    const { error } = await supabase.from("human_codings").upsert(payload as never, { onConflict: "step_id" });
+    if (error) throw new Error(error.message);
+    return { imported: payload.length };
+  });
+
+/** Agreement between the monitor and the human codings stored so far. */
+export const monitorValidation = createServerFn({ method: "POST" })
+  .inputValidator(() => ({}))
+  .handler(async () => {
+    const supabase = await db();
+    const { data: codings } = await supabase
+      .from("human_codings")
+      .select("step_id,human_severity,human_awareness,sample_seed");
+    const rows = codings ?? [];
+    if (!rows.length) return null;
+
+    const { data: steps } = await supabase
+      .from("steps")
+      .select("id,monitor_severity,awareness_label")
+      .in("id", rows.map((r) => r.step_id as string));
+    const byId = new Map((steps ?? []).map((s) => [String(s.id), s]));
+
+    const sevPairs: Array<[number, number]> = [];
+    const awarePairs: Array<[string, string]> = [];
+    for (const r of rows) {
+      const s = byId.get(String(r.step_id));
+      if (!s) continue;
+      if (r.human_severity != null && s.monitor_severity != null) {
+        sevPairs.push([Number(s.monitor_severity), Number(r.human_severity)]);
+      }
+      if (r.human_awareness && s.awareness_label) {
+        awarePairs.push([String(s.awareness_label), String(r.human_awareness)]);
+      }
+    }
+
+    return {
+      coded_steps: rows.length,
+      sample_seeds: [...new Set(rows.map((r) => r.sample_seed).filter((v) => v != null))],
+      severity_weighted_kappa: sevPairs.length ? weightedKappa(sevPairs, 1, 7) : null,
+      awareness_kappa: awarePairs.length ? cohenKappa(awarePairs) : null,
+      method: "Cohen's kappa (awareness, nominal); linear-weighted kappa (severity, 1–7)",
+    };
+  });
+
+/* ------------------------------------------------------------------ */
 /* Correctness and ceiling — derived, backfilled from stored data      */
 /* ------------------------------------------------------------------ */
 
