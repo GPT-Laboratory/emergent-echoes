@@ -7,6 +7,7 @@ import { generateWorldTasks, type AgentTask } from "./tasks";
 
 const ConfigSchema = z.object({
   taskMode: z.enum(["assisted", "emergent"]).default("assisted"),
+  schedulerMode: z.enum(["lockstep", "async"]).default("lockstep"),
   worldCount: z.number().int().min(1).max(20),
   agentsPerWorld: z.number().int().min(2).max(8),
   reasoningBudget: z.number().int().min(2).max(30),
