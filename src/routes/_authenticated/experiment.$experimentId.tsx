@@ -61,10 +61,28 @@ type PointRow = DosePoint & {
   replicates: Replicate[];
 };
 
+type ExpProgress = {
+  runsDone: number;
+  runsTotal: number;
+  worldsDone: number;
+  worldsTotal: number;
+  activeRunId: string | null;
+};
+
+function formatEta(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h} h ${m % 60} min`;
+}
+
 function ExperimentDetail() {
   const { experimentId } = Route.useParams();
   const [exp, setExp] = useState<Exp | null>(null);
   const [points, setPoints] = useState<PointRow[]>([]);
+  const [progress, setProgress] = useState<ExpProgress | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const doExport = useServerFn(exportExperiment);
