@@ -40,7 +40,7 @@ type Exp = {
   finished_at: string | null;
   duration_ms: number | null;
   base_seed: number | null;
-  sweep_points: number[];
+  sweep_points: Array<number | string>;
 };
 
 type Replicate = {
@@ -201,6 +201,10 @@ function ExperimentDetail() {
   }
   const pct =
     progress && progress.worldsTotal ? Math.round((progress.worldsDone / progress.worldsTotal) * 100) : 0;
+
+  // Clause sweeps store the clause index in sweep_value; names live on the experiment.
+  const isClauseSweep = exp?.type === "persistence_clause_sweep";
+  const clauseNames = (exp?.sweep_points ?? []).map((v) => String(v));
 
   return (
     <main className="mx-auto max-w-[1200px] px-5 py-6">
