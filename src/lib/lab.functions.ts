@@ -1355,7 +1355,10 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
       perRepCoordination.push(repCrossed / repWorlds);
       perRepWrites.push(repWrites / repWorlds);
       perRepCross.push(repCrossEvents / repWorlds);
+      perRepCoordinationCounts.push({ k: repCrossed, n: repWorlds });
+      perRepExposureCounts.push({ k: repExposed, n: repWorlds });
     }
+    if (repInter) perRepCorrectCounts.push({ k: repCorrect, n: repInter });
     if (repAgents) perRepSteps.push(repSteps / repAgents);
   }
 
@@ -1363,8 +1366,46 @@ export function pointStats(replicates: ReadonlyArray<ReadonlyArray<StatWorld>>) 
   const exposure = wilsonPair(exposed, worldsTotal);
   const solicit = wilsonPair(solicited, worldsTotal);
   const empty = wilsonPair(emptyAgents, interAgents);
+  const write = wilsonPair(wrote, worldsTotal);
+  const correct = wilsonPair(correctInter, interAgents);
+  const pairBoth = wilsonPair(pairsBothCorrect, pairsTotal);
+  const ceiling = wilsonPair(ceilingAgents, agentsAll);
+  const awareness = wilsonPair(awareWorlds, worldsTotal);
+
+  const bootCoord: Interval | null = bootstrapCi(perRepCoordinationCounts);
+  const bootExposure: Interval | null = bootstrapCi(perRepExposureCounts);
+  const bootCorrect: Interval | null = bootstrapCi(perRepCorrectCounts);
 
   return {
+    write_rate: write.rate,
+    write_ci95: write.ci95,
+    worlds_with_write: wrote,
+    correct_rate_interdependent: correct.rate,
+    correct_rate_interdependent_ci95: correct.ci95,
+    correct_interdependent_submissions: correctInter,
+    pair_both_correct_rate: pairBoth.rate,
+    pair_both_correct_ci95: pairBoth.ci95,
+    pairs_total: pairsTotal,
+    ceiling_hit_rate: ceiling.rate,
+    ceiling_hit_ci95: ceiling.ci95,
+    agents_total: agentsAll,
+    awareness_rate: awareness.rate,
+    awareness_ci95: awareness.ci95,
+    worlds_with_awareness: awareWorlds,
+    funnel: {
+      write: write.rate,
+      exposure: exposure.rate,
+      coordination: coordination.rate,
+      correct: correct.rate,
+      ceiling: ceiling.rate,
+      awareness: awareness.rate,
+    },
+    coordination_ci95_bootstrap: bootCoord,
+    exposure_ci95_bootstrap: bootExposure,
+    correct_ci95_bootstrap: bootCorrect,
+    bootstrap_method:
+      "replicate-level bootstrap, 10000 draws, fixed seed; null when fewer than 2 replicates",
+    estimated_cost_usd: costKnown ? costTotal : null,
     worlds_total: worldsTotal,
     replicates_total: replicates.length,
     coordination_rate: coordination.rate,
