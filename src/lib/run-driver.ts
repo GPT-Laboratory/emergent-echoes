@@ -205,6 +205,7 @@ export async function startSweep(
     finish: (args: { data: { experimentId: string; status: "complete" | "stopped" } }) => Promise<unknown>;
   },
   onError?: (msg: string) => void,
+  opts?: DriverOptions,
 ) {
   sweepCancelled.delete(experimentId);
 
