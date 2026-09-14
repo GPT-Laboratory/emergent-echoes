@@ -54,6 +54,11 @@ const ConfigSchema = z
   });
 
 
+/** Worker-agent model for this run; older rows without one fall back to the default. */
+function agentModelOf(cfg: { agentModel?: string }) {
+  return cfg.agentModel || AGENT_MODEL_ID;
+}
+
 async function db() {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   return supabaseAdmin;
