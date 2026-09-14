@@ -927,6 +927,7 @@ export const exportExperiment = createServerFn({ method: "POST" })
         duration_human: expDurationMs == null ? null : formatDuration(expDurationMs),
         task_mode: String(exp.task_mode),
         fixed_config: {
+          scheduler_mode: cfg.schedulerMode,
           reasoning_budget_steps: cfg.reasoningBudget,
           task_difficulty: cfg.difficulty,
           world_count: cfg.worldCount,
