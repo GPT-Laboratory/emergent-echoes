@@ -792,6 +792,8 @@ async function buildRunExport(supabase: Supa, runId: string) {
           persistence: cfg.persistence,
           world_count: cfg.worldCount,
           agents_per_world: cfg.agentsPerWorld,
+          store_read_limit: STORE_READ_LIMIT,
+          store_write_limit: STORE_WRITE_LIMIT,
           alert_threshold: cfg.alertThreshold,
           agent_temperature: cfg.agentTemperature,
           monitor_temperature: cfg.monitorTemperature,
