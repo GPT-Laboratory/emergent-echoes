@@ -96,6 +96,7 @@ export function runFileNameFromConfig(
     taskMode?: string;
     schedulerMode?: string;
     persistence?: number;
+    persistenceClause?: string;
     reasoningBudget?: number;
     worldCount?: number;
   } | null,
@@ -108,7 +109,7 @@ export function runFileNameFromConfig(
     String(c.taskMode ?? "assisted"),
     String(c.schedulerMode ?? "lockstep"),
     modelShort(agentModelId),
-    `p${persistenceTag(c.persistence ?? 0)}`,
+    persistenceSegment(c.persistenceClause, c.persistence ?? 0),
     `b${c.reasoningBudget ?? 0}`,
     `w${c.worldCount ?? 0}`,
   ].join("_") + ".json";
@@ -124,7 +125,7 @@ export function sweepFileNameFromConfig(
   const c = cfg ?? {};
   return [
     stamp(startedAt),
-    `sweep-${sweepVariable}`,
+    `sweep-${sweepVariable === "persistence_clause" ? "clause" : sweepVariable}`,
     taskMode || "assisted",
     String(c.schedulerMode ?? "lockstep"),
     modelShort(agentModelId),
