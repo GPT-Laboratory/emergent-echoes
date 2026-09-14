@@ -23,6 +23,8 @@ import {
 import { deriveSeed, randomSeed } from "./rng";
 import { spread, wilson } from "./stats";
 import {
+  AGENT_MAX_TOKENS,
+  MONITOR_MAX_TOKENS,
   MONITOR_SYSTEM,
   agentSystemPrompt,
   agentUserMessage,
