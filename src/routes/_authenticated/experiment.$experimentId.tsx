@@ -225,6 +225,27 @@ function ExperimentDetail() {
         </Button>
       </div>
 
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {running ? <ProvisionalBadge status="running" /> : <CompleteBadge />}
+      </div>
+
+      {(progress?.activeRunId || points[0]?.replicates[0]?.runId) && (
+        <RunHeader runId={progress?.activeRunId ?? points[0]!.replicates[0]!.runId} sweepPoints={points.length} className="mt-3" />
+      )}
+
+      {running && progress && progress.worldsTotal > 0 && (
+        <div className="mt-3 rounded-md border border-border bg-card/70 px-3 py-2">
+          <div className="h-1.5 w-full overflow-hidden rounded-sm bg-muted">
+            <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+            {progress.worldsDone} / {progress.worldsTotal} worlds · replicate {Math.min(progress.runsDone + 1, progress.runsTotal)} of{" "}
+            {progress.runsTotal} · {etaMs == null ? "estimating…" : `~${formatEta(etaMs)} left`}
+          </p>
+        </div>
+      )}
+
+
       <div className="mt-5 rounded-md border border-border bg-card/70 p-4">
         <h2 className="mb-3 font-mono text-sm text-foreground">Coordination rate by persistence</h2>
         <DoseResponseChart data={points} />
