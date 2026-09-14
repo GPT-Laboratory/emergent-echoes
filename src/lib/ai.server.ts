@@ -2,7 +2,17 @@
  * Single config point for the models used by the lab.
  * Swap these ids to change agent / monitor capability.
  */
-import { AGENT_MODEL_ID, MONITOR_MODEL_ID, PROVIDER_FIXED_TEMPERATURE, temperatureSupported } from "./lab-types";
+import {
+  AGENT_MODEL_ID,
+  MONITOR_MODEL_ID,
+  PROVIDER_FIXED_TEMPERATURE,
+  normalizeEffortForModel,
+  reasoningEffortSupported,
+  temperatureSupported,
+  type ReasoningEffort,
+} from "./lab-types";
+
+export { effectiveReasoningEffort } from "./lab-types";
 
 export const AGENT_MODEL = AGENT_MODEL_ID;
 export const MONITOR_MODEL = MONITOR_MODEL_ID;
