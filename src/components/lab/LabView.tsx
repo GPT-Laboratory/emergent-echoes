@@ -59,6 +59,7 @@ export function LabView({ runId }: { runId: string | null }) {
   const doActivate = useServerFn(activateRun);
   const doFinish = useServerFn(finishExperiment);
   const doStepAgent = useServerFn(stepAgent);
+  const doReplicateSet = useServerFn(createReplicateSet);
 
   const driverOpts = () => ({
     mode: config.schedulerMode,
