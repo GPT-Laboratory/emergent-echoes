@@ -197,114 +197,126 @@ function Runs() {
               <th className="px-3 py-2">Started</th>
               <th className="px-3 py-2">Duration</th>
               <th className="px-3 py-2">Mode</th>
-              <th className="px-3 py-2">Difficulty</th>
-              <th className="px-3 py-2">Reasoning</th>
               <th className="px-3 py-2">Persistence</th>
-              <th className="px-3 py-2">Worlds</th>
-              <th className="px-3 py-2">Emergence</th>
+              <th className="px-3 py-2">Rep × worlds</th>
+              <th className="px-3 py-2">Coordination (95% CI)</th>
+              <th className="px-3 py-2">Note</th>
               <th className="px-3 py-2" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
                   No runs recorded yet.
                 </td>
               </tr>
             )}
-            {groupRows(rows).map((item) =>
-              item.kind === "experiment" ? (
-                <tr key={`exp-${item.experimentId}`} className="bg-card/60">
+            {byModel(rows).map((group) => (
+              <Fragment key={`model-${group.model}`}>
+                <tr className="bg-primary/10">
                   <td colSpan={9} className="px-3 py-2 font-mono text-primary">
-                    Persistence sweep {item.experimentId.slice(0, 8)}
-                    <span className="ml-2 text-muted-foreground">
-                      {item.mode} · {item.runs} points
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center justify-end gap-3">
-                      <Link
-                        to="/experiment/$experimentId"
-                        params={{ experimentId: item.experimentId }}
-                        className="font-mono uppercase tracking-widest text-primary hover:underline"
-                      >
-                        Open sweep
-                      </Link>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={busy === item.experimentId}
-                        onClick={() => void downloadSweep(item.experimentId)}
-                        className="font-mono text-[10px] lowercase tracking-normal"
-                      >
-                        {busy === item.experimentId
-                          ? "Building…"
-                          : sweepFileNameFromConfig(item.startedAt, item.mode, item.config, AGENT_MODEL_ID)}
-                      </Button>
-                    </div>
+                    {group.model}
+                    <span className="ml-2 text-muted-foreground">{group.rows.length} run(s)</span>
                   </td>
                 </tr>
-              ) : (
-              <tr key={item.run.id} className="bg-background/40">
-                <td className="px-3 py-2 font-mono">
-                  {new Date(item.run.created_at).toLocaleString()}
-                  <span className="ml-2 text-muted-foreground">{item.run.status}</span>
-                </td>
-                <td className="px-3 py-2 font-mono">
-                  {new Date(item.run.started_at ?? item.run.created_at).toLocaleString()}
-                </td>
-                <td className="px-3 py-2 font-mono">
-                  {item.run.duration_ms != null ? formatDuration(item.run.duration_ms) : "—"}
-                </td>
-                <td className="px-3 py-2 font-mono text-primary">{item.run.config?.taskMode ?? "assisted"}</td>
-                <td className="px-3 py-2 font-mono">{Math.round((item.run.config?.difficulty ?? 0) * 100)}%</td>
-                <td className="px-3 py-2 font-mono">{item.run.config?.reasoningBudget ?? "—"}</td>
-                <td className="px-3 py-2 font-mono">{Math.round((item.run.config?.persistence ?? 0) * 100)}%</td>
-                <td className="px-3 py-2 font-mono">{item.run.worlds}</td>
-                <td className="px-3 py-2 font-mono text-primary">
-                  {item.run.worlds ? Math.round((item.run.emerged / item.run.worlds) * 100) : 0}%
-                  <span className="ml-1 text-muted-foreground">
-                    ({item.run.emerged}/{item.run.worlds})
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex items-center justify-end gap-3">
-                    <Link
-                      to="/run/$runId"
-                      params={{ runId: item.run.id }}
-                      className="font-mono uppercase tracking-widest text-primary hover:underline"
-                    >
-                      Open
-                    </Link>
-                    <Link
-                      to="/replay/$runId"
-                      params={{ runId: item.run.id }}
-                      className="font-mono uppercase tracking-widest text-primary hover:underline"
-                    >
-                      Replay
-                    </Link>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={busy === item.run.id}
-                      onClick={() => void download(item.run.id)}
-                      className="font-mono text-[10px] lowercase tracking-normal"
-                    >
-                      {busy === item.run.id
-                        ? "Building…"
-                        : runFileNameFromConfig(
-                            item.run.started_at ?? item.run.created_at,
-                            item.run.config,
-                            AGENT_MODEL_ID,
-                          )}
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-              ),
-            )}
+                {groupRows(group.rows).map((item) =>
+                  item.kind === "experiment" ? (
+                    <tr key={`exp-${item.experimentId}`} className="bg-card/60">
+                      <td colSpan={8} className="px-3 py-2 font-mono text-primary">
+                        Persistence sweep {item.experimentId.slice(0, 8)}
+                        <span className="ml-2 text-muted-foreground">
+                          {item.mode} · {item.runs} points
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-3">
+                          <Link
+                            to="/experiment/$experimentId"
+                            params={{ experimentId: item.experimentId }}
+                            className="font-mono uppercase tracking-widest text-primary hover:underline"
+                          >
+                            Open sweep
+                          </Link>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={busy === item.experimentId}
+                            onClick={() => void downloadSweep(item.experimentId)}
+                            className="font-mono text-[10px] lowercase tracking-normal"
+                          >
+                            {busy === item.experimentId
+                              ? "Building…"
+                              : sweepFileNameFromConfig(item.startedAt, item.mode, item.config, group.model)}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={item.run.id} className="bg-background/40">
+                      <td className="px-3 py-2 font-mono">
+                        {new Date(item.run.created_at).toLocaleString()}
+                        <span className="ml-2 text-muted-foreground">{item.run.status}</span>
+                      </td>
+                      <td className="px-3 py-2 font-mono">
+                        {new Date(item.run.started_at ?? item.run.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 font-mono">
+                        {item.run.duration_ms != null ? formatDuration(item.run.duration_ms) : "—"}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-primary">{item.run.config?.taskMode ?? "assisted"}</td>
+                      <td className="px-3 py-2 font-mono">
+                        {Math.round((item.run.config?.persistence ?? 0) * 100)}%
+                      </td>
+                      <td className="px-3 py-2 font-mono">
+                        {item.run.config?.replicates ?? 1} × {item.run.config?.worldCount ?? item.run.worlds}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-primary">
+                        {rateWithCi(item.run.emerged, item.run.worlds)}
+                      </td>
+                      <td className="max-w-[220px] truncate px-3 py-2 text-muted-foreground" title={item.run.config?.runNote ?? ""}>
+                        {item.run.config?.runNote || "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-3">
+                          <Link
+                            to="/run/$runId"
+                            params={{ runId: item.run.id }}
+                            className="font-mono uppercase tracking-widest text-primary hover:underline"
+                          >
+                            Open
+                          </Link>
+                          <Link
+                            to="/replay/$runId"
+                            params={{ runId: item.run.id }}
+                            className="font-mono uppercase tracking-widest text-primary hover:underline"
+                          >
+                            Replay
+                          </Link>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={busy === item.run.id}
+                            onClick={() => void download(item.run.id)}
+                            className="font-mono text-[10px] lowercase tracking-normal"
+                          >
+                            {busy === item.run.id
+                              ? "Building…"
+                              : runFileNameFromConfig(
+                                  item.run.started_at ?? item.run.created_at,
+                                  item.run.config,
+                                  item.run.config?.agentModel ?? AGENT_MODEL_ID,
+                                )}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ),
+                )}
+              </Fragment>
+            ))}
           </tbody>
+
         </table>
       </div>
     </main>
