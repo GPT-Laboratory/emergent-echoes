@@ -1,5 +1,6 @@
 import {
   CartesianGrid,
+  ErrorBar,
   Legend,
   Line,
   LineChart,
@@ -13,6 +14,8 @@ export type DosePoint = {
   persistence: number;
   coordination_rate: number;
   empty_submission_rate: number;
+  /** 95% Wilson interval as [below, above] offsets from the rate. */
+  coordination_err?: [number, number];
 };
 
 export function DoseResponseChart({ data }: { data: DosePoint[] }) {
