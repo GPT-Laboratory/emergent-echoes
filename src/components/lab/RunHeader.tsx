@@ -228,6 +228,8 @@ export function RunHeader({
     return () => clearInterval(id);
   }, [row?.duration_ms, row?.status, row]);
 
+  const progress = useRunProgress(row?.id ?? runId ?? null, row);
+
   if (!row) return null;
 
   const cfg: LabConfig = { ...DEFAULT_CONFIG, ...(row.config ?? {}) };
