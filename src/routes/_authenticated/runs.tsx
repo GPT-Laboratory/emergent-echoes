@@ -13,6 +13,7 @@ import { exportExperiment, exportRun } from "@/lib/lab.functions";
 
 import { supabase } from "@/integrations/supabase/client";
 import { AGENT_MODEL_ID, formatDuration, type LabConfig } from "@/lib/lab-types";
+import { wilson } from "@/lib/stats";
 
 export const Route = createFileRoute("/_authenticated/runs")({
   head: () => ({
