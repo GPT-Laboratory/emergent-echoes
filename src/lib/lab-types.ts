@@ -66,6 +66,33 @@ export function temperatureSupported(modelId: string): boolean {
 /** Provider-documented default used when temperature cannot be set. */
 export const PROVIDER_FIXED_TEMPERATURE = 1.0;
 
+/** Reasoning effort is an experimental factor: locked, never left to the gateway. */
+export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
+/**
+ * Which models accept an explicit reasoning effort on the chat path.
+ * OpenAI: `reasoning_effort`. Google (OpenRouter): `reasoning: { effort }`,
+ * which only accepts low/medium/high.
+ */
+export function reasoningEffortSupported(modelId: string): boolean {
+  return modelId.startsWith("openai/") || modelId.startsWith("google/");
+}
+
+/** Google accepts only low/medium/high; xhigh/max collapse to high. */
+export function normalizeEffortForModel(modelId: string, effort: ReasoningEffort): ReasoningEffort {
+  if (modelId.startsWith("google/") && (effort === "xhigh" || effort === "max")) return "high";
+  return effort;
+}
+
+/**
+ * What was actually in force. Never "unknown": either the locked value we sent,
+ * or the explicit string "gateway-default" when the model rejects the parameter.
+ */
+export function effectiveReasoningEffort(modelId: string, requested: ReasoningEffort): ReasoningEffort | "gateway-default" {
+  return reasoningEffortSupported(modelId) ? normalizeEffortForModel(modelId, requested) : "gateway-default";
+}
+
 export const MONITOR_LABELS = [
   "normal",
   "environment probing",
