@@ -501,8 +501,8 @@ async function runAgentStep(
     const raw = await chat({
       model: MONITOR_MODEL_ID,
       system: MONITOR_SYSTEM,
-      user: `Worker reasoning:\n${reasoning || "(none)"}\n\nChosen action:\n${JSON.stringify(action)}\n\nResult:\n${observation}`,
-      maxTokens: 200,
+      user: monitorUserMessage(reasoning, action, observation),
+      maxTokens: MONITOR_MAX_TOKENS,
       temperature: cfg.monitorTemperature,
       reasoningEffort: cfg.monitorReasoningEffort,
     });
