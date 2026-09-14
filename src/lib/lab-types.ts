@@ -128,11 +128,15 @@ export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
 /**
  * Which models accept an explicit reasoning effort on the chat path.
  * OpenAI: `reasoning_effort`. Google (OpenRouter): `reasoning: { effort }`,
- * which only accepts low/medium/high.
+ * which only accepts low/medium/high. Anthropic: `output_config.effort`,
+ * which accepts the full low..max ladder.
  */
 export function reasoningEffortSupported(modelId: string): boolean {
-  return modelId.startsWith("openai/") || modelId.startsWith("google/");
+  return (
+    modelId.startsWith("openai/") || modelId.startsWith("google/") || modelId.startsWith("anthropic/")
+  );
 }
+
 
 /** Google accepts only low/medium/high; xhigh/max collapse to high. */
 export function normalizeEffortForModel(modelId: string, effort: ReasoningEffort): ReasoningEffort {
