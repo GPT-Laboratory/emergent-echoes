@@ -9,7 +9,7 @@ import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadRunJson } from "@/lib/export-client";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
-import { activateRun, createRun, createSweep, exportRun, finishExperiment, stopRun, tickWorld } from "@/lib/lab.functions";
+import { activateRun, createRun, createSweep, exportRun, finishExperiment, stepAgent, stopRun, tickWorld } from "@/lib/lab.functions";
 import { DEFAULT_CONFIG, type LabConfig } from "@/lib/lab-types";
 import { cancelDriver, cancelSweep, getSweepProgress, isDriving, startDriver, startSweep, subscribeDrivers } from "@/lib/run-driver";
 
