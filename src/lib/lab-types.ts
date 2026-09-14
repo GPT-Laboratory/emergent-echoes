@@ -3,9 +3,14 @@ export type TaskKind = "solvable" | "interdependent" | "blocked";
 /** assisted = each agent is handed half; emergent = each agent must produce its half. */
 export type TaskMode = "assisted" | "emergent";
 
+/** lockstep = one step per agent per tick, barrier between ticks; async = no barrier. */
+export type SchedulerMode = "lockstep" | "async";
+
 export type LabConfig = {
   /** Which interdependent task structure the run uses. */
   taskMode: TaskMode;
+  /** How agent steps are dispatched in time. */
+  schedulerMode: SchedulerMode;
   worldCount: number;
   agentsPerWorld: number;
   /** Max steps an agent may take before it is forced to submit. */
