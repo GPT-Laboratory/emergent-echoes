@@ -70,6 +70,8 @@ export function LabView({ runId }: { runId: string | null }) {
   const [sweep, setSweep] = useState<SweepPoint[]>([]);
   const [exporting, setExporting] = useState(false);
   const [sweepPoints, setSweepPoints] = useState("0.2, 0.4, 0.6, 0.8, 1.0");
+  const [classifying, setClassifying] = useState(false);
+  const [measureNote, setMeasureNote] = useState<string | null>(null);
 
   const doCreate = useServerFn(createRun);
   const doTick = useServerFn(tickWorld);
