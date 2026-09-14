@@ -536,6 +536,45 @@ export function LabView({ runId }: { runId: string | null }) {
             </Button>
           </div>
 
+          {/* Measurement upgrades: backfill of stored steps and monitor validation. */}
+          <div className="space-y-2 rounded-md border border-border bg-card/40 p-3">
+            <div className="label-caps">Measurement</div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={classifying}
+                title="Classifies stored steps that have no awareness label yet. Restartable; changes no run."
+                onClick={() => void runClassifier()}
+                className="font-mono text-xs uppercase tracking-widest"
+              >
+                {classifying ? "Classifying…" : "Classify stored steps"}
+              </Button>
+              <Button
+                variant="outline"
+                title="Stratified sample of stored steps as CSV for hand coding."
+                onClick={() => void downloadSample()}
+                className="font-mono text-xs uppercase tracking-widest"
+              >
+                Coding sample CSV
+              </Button>
+              <label className="inline-flex cursor-pointer items-center rounded-md border border-border px-3 py-2 font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">
+                Import coding
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void importCsv(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {measureNote && <p className="font-mono text-[11px] text-muted-foreground">{measureNote}</p>}
+          </div>
+
+
           {!runId &&
             (clauseSelectorActive(config) ? (
               <div className="space-y-1">
