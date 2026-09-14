@@ -290,6 +290,7 @@ async function runAgentStep(
 ) {
   const stepIndex = agent.step_count;
   const stepsLeft = Math.max(0, effectiveBudget(cfg) - stepIndex);
+  const startedAt = new Date().toISOString();
 
   const { data: history } = await supabase
     .from("steps")
