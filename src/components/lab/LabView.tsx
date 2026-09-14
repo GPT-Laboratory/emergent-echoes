@@ -192,6 +192,7 @@ export function LabView({ runId }: { runId: string | null }) {
         res.runs,
         { tick: (a) => doTick(a), activate: (a) => doActivate(a), finish: (a) => doFinish(a) },
         (msg) => setError(msg),
+        driverOpts(),
       );
       void navigate({ to: "/experiment/$experimentId", params: { experimentId: res.experimentId } });
     } catch (e) {
