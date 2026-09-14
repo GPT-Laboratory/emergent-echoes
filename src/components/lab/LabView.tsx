@@ -149,8 +149,10 @@ export function LabView({ runId }: { runId: string | null }) {
         ? crossed.reduce((acc, w) => acc + (w.first_cross_read_step ?? 0), 0) / crossed.length
         : null;
     const flaggedFirst = worlds.map((w) => w.first_flag_step).filter((v): v is number => v != null);
+    const w95 = wilson(crossed.length, worlds.length);
     return {
       crossRate: Math.round((crossed.length / n) * 100),
+      ci: worlds.length ? `${Math.round(w95.low * 100)}–${Math.round(w95.high * 100)}%` : "—",
       solicitRate: Math.round((solicited / n) * 100),
       meanFirst,
       meanFirstFlag: flaggedFirst.length ? flaggedFirst.reduce((a, b) => a + b, 0) / flaggedFirst.length : null,
