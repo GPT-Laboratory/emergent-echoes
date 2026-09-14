@@ -184,7 +184,8 @@ export function generateWorldTasks(
   const out: AgentTask[] = [];
   for (let p = 0; p < pairCount; p++) {
     const groupId = `grp-${randCode(rng)}${randCode(rng)}`;
-    const [a, b] = mode === "emergent" ? emergentPair(rng, groupId) : assistedPair(rng, groupId);
+    // The no-store control is emergent in every respect except the missing cache.
+    const [a, b] = mode === "assisted" ? assistedPair(rng, groupId) : emergentPair(rng, groupId);
     out.push(a, b);
   }
   while (out.length < agentCount) out.push(solvableTask(rng));

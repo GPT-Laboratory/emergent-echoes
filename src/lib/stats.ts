@@ -36,3 +36,89 @@ export function spread(values: Array<number | null | undefined>): Spread {
       : 0;
   return { mean, sd, min: Math.min(...xs), max: Math.max(...xs), n: xs.length };
 }
+
+/* ------------------------------------------------------------------ */
+/* Replicate-level bootstrap                                           */
+/* ------------------------------------------------------------------ */
+
+import { makeRng } from "./rng";
+
+export type Interval = [number, number];
+
+/**
+ * Replicate-level bootstrap interval: resample whole replicates with
+ * replacement, pool each resample, and take the 2.5/97.5 percentiles.
+ * Unlike the pooled Wilson interval this carries between-replicate variance.
+ * Deterministic — the same input always yields the same interval.
+ */
+export function bootstrapCi(
+  perReplicate: ReadonlyArray<{ k: number; n: number }>,
+  draws = 10_000,
+  seed = 0x5eed1234,
+): Interval | null {
+  const reps = perReplicate.filter((r) => r.n > 0);
+  if (reps.length < 2) return null;
+  const rng = makeRng(seed);
+  const rates: number[] = [];
+  for (let d = 0; d < draws; d++) {
+    let k = 0;
+    let n = 0;
+    for (let i = 0; i < reps.length; i++) {
+      const pick = reps[Math.floor(rng() * reps.length)]!;
+      k += pick.k;
+      n += pick.n;
+    }
+    rates.push(n ? k / n : 0);
+  }
+  rates.sort((a, b) => a - b);
+  const at = (q: number) => rates[Math.min(rates.length - 1, Math.max(0, Math.round(q * (rates.length - 1))))]!;
+  return [at(0.025), at(0.975)];
+}
+
+/** True when a Wilson and a bootstrap interval disagree by more than `ppThreshold`. */
+export function intervalsDisagree(a: Interval | null, b: Interval | null, ppThreshold = 0.05): boolean {
+  if (!a || !b) return false;
+  return Math.abs(a[0] - b[0]) > ppThreshold || Math.abs(a[1] - b[1]) > ppThreshold;
+}
+
+/* ------------------------------------------------------------------ */
+/* Inter-rater agreement (monitor validation)                          */
+/* ------------------------------------------------------------------ */
+
+export type Kappa = { kappa: number | null; n: number; observed: number | null; expected: number | null };
+
+/** Cohen's kappa for nominal labels. */
+export function cohenKappa(pairs: ReadonlyArray<[string, string]>): Kappa {
+  const n = pairs.length;
+  if (!n) return { kappa: null, n: 0, observed: null, expected: null };
+  const cats = [...new Set(pairs.flatMap(([a, b]) => [a, b]))];
+  const agree = pairs.filter(([a, b]) => a === b).length / n;
+  let expected = 0;
+  for (const c of cats) {
+    const pa = pairs.filter(([a]) => a === c).length / n;
+    const pb = pairs.filter(([, b]) => b === c).length / n;
+    expected += pa * pb;
+  }
+  const kappa = expected === 1 ? 1 : (agree - expected) / (1 - expected);
+  return { kappa, n, observed: agree, expected };
+}
+
+/** Linearly weighted kappa for ordinal scores (the 1–7 severity scale). */
+export function weightedKappa(pairs: ReadonlyArray<[number, number]>, min = 1, max = 7): Kappa {
+  const n = pairs.length;
+  if (!n) return { kappa: null, n: 0, observed: null, expected: null };
+  const range = max - min || 1;
+  const w = (a: number, b: number) => 1 - Math.abs(a - b) / range;
+  const observed = pairs.reduce((acc, [a, b]) => acc + w(a, b), 0) / n;
+  const counts = (idx: 0 | 1) => {
+    const m = new Map<number, number>();
+    for (const p of pairs) m.set(p[idx], (m.get(p[idx]) ?? 0) + 1);
+    return m;
+  };
+  const ca = counts(0);
+  const cb = counts(1);
+  let expected = 0;
+  for (const [a, na] of ca) for (const [b, nb] of cb) expected += w(a, b) * (na / n) * (nb / n);
+  const kappa = expected === 1 ? 1 : (observed - expected) / (1 - expected);
+  return { kappa, n, observed, expected };
+}

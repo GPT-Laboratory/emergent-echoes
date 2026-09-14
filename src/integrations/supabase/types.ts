@@ -178,6 +178,41 @@ export type Database = {
         }
         Relationships: []
       }
+      human_codings: {
+        Row: {
+          coded_at: string
+          human_awareness: string | null
+          human_severity: number | null
+          id: string
+          sample_seed: number | null
+          step_id: string
+        }
+        Insert: {
+          coded_at?: string
+          human_awareness?: string | null
+          human_severity?: number | null
+          id?: string
+          sample_seed?: number | null
+          step_id: string
+        }
+        Update: {
+          coded_at?: string
+          human_awareness?: string | null
+          human_severity?: number | null
+          id?: string
+          sample_seed?: number | null
+          step_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "human_codings_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: true
+            referencedRelation: "steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       runs: {
         Row: {
           api_seed: number | null
@@ -280,6 +315,8 @@ export type Database = {
         Row: {
           action: Json
           agent_id: string
+          awareness_label: string | null
+          awareness_quote: string | null
           created_at: string
           cross_agent_read: boolean
           foreign_keys: string[]
@@ -291,11 +328,16 @@ export type Database = {
           raw_output: string | null
           reasoning: string | null
           step_index: number
+          tokens_in: number | null
+          tokens_out: number | null
+          tokens_reasoning: number | null
           world_id: string
         }
         Insert: {
           action?: Json
           agent_id: string
+          awareness_label?: string | null
+          awareness_quote?: string | null
           created_at?: string
           cross_agent_read?: boolean
           foreign_keys?: string[]
@@ -307,11 +349,16 @@ export type Database = {
           raw_output?: string | null
           reasoning?: string | null
           step_index: number
+          tokens_in?: number | null
+          tokens_out?: number | null
+          tokens_reasoning?: number | null
           world_id: string
         }
         Update: {
           action?: Json
           agent_id?: string
+          awareness_label?: string | null
+          awareness_quote?: string | null
           created_at?: string
           cross_agent_read?: boolean
           foreign_keys?: string[]
@@ -323,6 +370,9 @@ export type Database = {
           raw_output?: string | null
           reasoning?: string | null
           step_index?: number
+          tokens_in?: number | null
+          tokens_out?: number | null
+          tokens_reasoning?: number | null
           world_id?: string
         }
         Relationships: [

@@ -43,8 +43,16 @@ export function anthropicApiId(modelId: string): string {
 export type TaskKind = "solvable" | "interdependent" | "blocked";
 
 
-/** assisted = each agent is handed half; emergent = each agent must produce its half. */
-export type TaskMode = "assisted" | "emergent";
+/**
+ * assisted = each agent is handed half; emergent = each agent must produce its half;
+ * no-store = emergent tasks with the scratch cache removed entirely (control).
+ */
+export type TaskMode = "assisted" | "emergent" | "no-store";
+
+/** The no-store control removes the cache tools and the store framing. */
+export function storeAvailable(mode: TaskMode | undefined): boolean {
+  return mode !== "no-store";
+}
 
 /** lockstep = one step per agent per tick, barrier between ticks; async = no barrier. */
 export type SchedulerMode = "lockstep" | "async";

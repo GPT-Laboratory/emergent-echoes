@@ -3,11 +3,12 @@ import { z } from "zod";
 
 import {
   PROVIDER_DEFAULT_TEMPERATURE,
-  chat,
+  chatDetailed,
   effectiveTemperature,
   effortRejected,
   extractJson,
   GatewayError,
+  type ChatUsage,
 } from "./ai.server";
 
 import {
@@ -23,6 +24,7 @@ import {
   effectiveReasoningEffort,
   formatDuration,
   providerOf,
+  storeAvailable,
   type LabConfig,
 } from "./lab-types";
 import { deriveSeed, randomSeed } from "./rng";
@@ -33,13 +35,20 @@ export const STORE_READ_LIMIT = 800;
 export const STORE_WRITE_LIMIT = 2000;
 import {
   AGENT_MAX_TOKENS,
+  AWARENESS_LABELS,
+  AWARENESS_MAX_TOKENS,
+  AWARENESS_SYSTEM,
   MONITOR_MAX_TOKENS,
   MONITOR_SYSTEM,
   agentSystemPrompt,
+  awarenessRank,
+  awarenessUserMessage,
   clauseTextFor,
   agentUserMessage,
   monitorUserMessage,
 } from "./prompt-spec";
+import { estimateCostUsd, sumTokens, type TokenTotals } from "./pricing";
+import { bootstrapCi, cohenKappa, weightedKappa, type Interval } from "./stats";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
 /**
@@ -54,7 +63,7 @@ function agentEffortEffective(cfg: LabConfig): string {
 
 const ConfigSchema = z
   .object({
-    taskMode: z.enum(["assisted", "emergent"]).default("assisted"),
+    taskMode: z.enum(["assisted", "emergent", "no-store"]).default("assisted"),
     schedulerMode: z.enum(["lockstep", "async"]).default("lockstep"),
     worldCount: z.number().int().min(1).max(20),
     agentsPerWorld: z.number().int().min(2).max(8),
@@ -404,9 +413,10 @@ async function runAgentStep(
   let reasoning = "";
   let rawOutput: string | null = null;
   let action: Record<string, unknown> = { tool: "submit", answer: "" };
+  const usages: ChatUsage[] = [];
 
   try {
-    const raw = await chat({
+    const res = await chatDetailed({
       model: agentModelOf(cfg),
       system: agentSystemPrompt(agent.task, cfg, stepsLeft),
       user: agentUserMessage(transcript),
@@ -414,6 +424,8 @@ async function runAgentStep(
       temperature: cfg.agentTemperature,
       reasoningEffort: cfg.agentReasoningEffort,
     });
+    const raw = res.text;
+    usages.push(res.usage);
     rawOutput = raw;
     const parsed = extractJson<{
       reasoning?: string;
@@ -424,9 +436,9 @@ async function runAgentStep(
     }>(raw);
     if (parsed) {
       reasoning = String(parsed.reasoning ?? "").slice(0, 4000);
-      const tool = ["list", "read", "write", "submit"].includes(String(parsed.tool))
-        ? String(parsed.tool)
-        : "submit";
+      // In the no-store control the cache does not exist, so only submit is real.
+      const allowed = storeAvailable(cfg.taskMode) ? ["list", "read", "write", "submit"] : ["submit"];
+      const tool = allowed.includes(String(parsed.tool)) ? String(parsed.tool) : "submit";
       action = {
         tool,
         key: parsed.key ?? null,
@@ -521,7 +533,7 @@ async function runAgentStep(
   let label: string | null = null;
   let note: string | null = null;
   try {
-    const raw = await chat({
+    const res = await chatDetailed({
       model: MONITOR_MODEL_ID,
       system: MONITOR_SYSTEM,
       user: monitorUserMessage(reasoning, action, observation),
@@ -529,7 +541,8 @@ async function runAgentStep(
       temperature: cfg.monitorTemperature,
       reasoningEffort: cfg.monitorReasoningEffort,
     });
-    const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(raw);
+    usages.push(res.usage);
+    const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(res.text);
     if (parsed) {
       const s = Number(parsed.severity);
       severity = Number.isFinite(s) ? Math.min(7, Math.max(1, Math.round(s))) : null;
@@ -539,6 +552,12 @@ async function runAgentStep(
   } catch {
     /* monitor failures must not break the run */
   }
+
+  /* ---- awareness classifier: a second, independent monitor pass ---- */
+  const aware = await classifyAwareness(cfg, reasoning, action, observation);
+  if (aware.usage) usages.push(aware.usage);
+
+  const tokens = sumTokens(usages);
 
   const { data: stepRow } = await supabase
     .from("steps")
@@ -555,6 +574,11 @@ async function runAgentStep(
       monitor_severity: severity,
       monitor_label: label,
       monitor_note: note,
+      tokens_in: tokens.tokens_in,
+      tokens_out: tokens.tokens_out,
+      tokens_reasoning: tokens.tokens_reasoning,
+      awareness_label: aware.label,
+      awareness_quote: aware.quote,
     })
     .select("id")
     .single();
