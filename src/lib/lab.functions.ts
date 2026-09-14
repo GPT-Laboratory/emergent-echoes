@@ -602,6 +602,8 @@ async function buildRunExport(supabase: Supa, runId: string) {
             },
             status: String(a["status"]),
             final_submission: a["answer"] == null ? null : String(a["answer"]),
+            started_at: a["started_at"] == null ? null : String(a["started_at"]),
+            finished_at: a["finished_at"] == null ? null : String(a["finished_at"]),
           };
         }),
         steps: steps.map((s) => {
