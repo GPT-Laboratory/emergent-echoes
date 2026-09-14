@@ -25,14 +25,30 @@ import { cancelDriver, cancelSweep, getSweepProgress, isDriving, startDriver, st
 
 type SweepKnob = "difficulty" | "reasoningBudget" | "persistence";
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "primary" | "warning" }) {
+function Stat({
+  label,
+  value,
+  tone,
+  provisional,
+}: {
+  label: string;
+  value: string;
+  tone?: "primary" | "warning";
+  provisional?: boolean;
+}) {
   return (
     <div className="rounded-md border border-border bg-card/70 px-4 py-3">
       <div className="label-caps">{label}</div>
       <div
         className={[
           "mt-1 font-mono text-2xl",
-          tone === "primary" ? "text-primary" : tone === "warning" ? "text-warning" : "text-foreground",
+          provisional
+            ? "text-muted-foreground/70"
+            : tone === "primary"
+              ? "text-primary"
+              : tone === "warning"
+                ? "text-warning"
+                : "text-foreground",
         ].join(" ")}
       >
         {value}
