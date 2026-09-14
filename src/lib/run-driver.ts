@@ -178,6 +178,8 @@ export type SweepProgress = {
   pointIndex: number;
   totalPoints: number;
   persistence: number;
+  /** Clause name when the sweep varies the persistence clause instead of the number. */
+  label?: string | undefined;
   worldsDone: number;
   worldsTotal: number;
   finished: boolean;
@@ -198,7 +200,7 @@ export function cancelSweep(experimentId: string) {
 
 export async function startSweep(
   experimentId: string,
-  points: Array<{ runId: string; persistence: number }>,
+  points: Array<{ runId: string; persistence: number; label?: string | undefined }>,
   deps: {
     tick: Tick;
     activate: (args: { data: { runId: string } }) => Promise<unknown>;
@@ -217,6 +219,7 @@ export async function startSweep(
       pointIndex: i,
       totalPoints: points.length,
       persistence: point.persistence,
+      label: point.label,
       worldsDone: 0,
       worldsTotal: 0,
       finished: false,

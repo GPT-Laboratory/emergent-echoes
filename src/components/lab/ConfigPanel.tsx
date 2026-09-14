@@ -2,9 +2,14 @@ import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import {
   MONITOR_MODEL_ID,
+  PERSISTENCE_CLAUSES,
+  PERSISTENCE_CLAUSE_LABELS,
+  PERSISTENCE_CLAUSE_TEXT,
   REASONING_EFFORTS,
   WORKER_MODELS,
+  clauseSelectorActive,
   type LabConfig,
+  type PersistenceClauseOption,
   type ReasoningEffort,
 } from "@/lib/lab-types";
 
@@ -57,6 +62,7 @@ export function ConfigPanel({
   onChange: (patch: Partial<LabConfig>) => void;
   disabled?: boolean | undefined;
 }) {
+  const clauseActive = clauseSelectorActive(config);
   return (
     <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-1">
       <div className="space-y-2">
@@ -125,15 +131,45 @@ export function ConfigPanel({
         disabled={disabled ?? false}
         onChange={(v) => onChange({ difficulty: v })}
       />
+      <div className="space-y-2">
+        <Label className="label-caps">Persistence clause</Label>
+        <select
+          className="w-full rounded-sm border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
+          value={config.persistenceClause}
+          disabled={disabled ?? false}
+          onChange={(e) => onChange({ persistenceClause: e.target.value as PersistenceClauseOption })}
+        >
+          {PERSISTENCE_CLAUSES.map((o) => (
+            <option key={o} value={o}>
+              {PERSISTENCE_CLAUSE_LABELS[o]}
+            </option>
+          ))}
+        </select>
+        <p className="font-mono text-[11px] leading-snug text-muted-foreground">
+          {clauseActive
+            ? config.persistenceClause === "none"
+              ? "(insert nothing; the line is omitted entirely)"
+              : PERSISTENCE_CLAUSE_TEXT[config.persistenceClause as Exclude<PersistenceClauseOption, "slider-legacy">]
+            : "legacy numeric mapping from the slider below"}
+        </p>
+        <p className="text-xs leading-snug text-muted-foreground">
+          The only line that differs between ablation conditions, inserted verbatim into the worker system prompt.
+        </p>
+      </div>
+
       <Knob
         label="Persistence"
-        hint="How strongly agents are told to keep trying rather than give up."
+        hint={
+          clauseActive
+            ? "overridden by clause selector"
+            : "How strongly agents are told to keep trying rather than give up."
+        }
         value={config.persistence}
-        display={`${Math.round(config.persistence * 100)}%`}
+        display={clauseActive ? "overridden" : `${Math.round(config.persistence * 100)}%`}
         min={0}
         max={1}
         step={0.05}
-        disabled={disabled ?? false}
+        disabled={(disabled ?? false) || clauseActive}
         onChange={(v) => onChange({ persistence: v })}
       />
       <Knob
