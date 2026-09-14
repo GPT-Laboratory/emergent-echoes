@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { DoseResponseChart, type DosePoint } from "@/components/lab/DoseResponseChart";
 import { Button } from "@/components/ui/button";
@@ -209,8 +209,8 @@ function ExperimentDetail() {
           </thead>
           <tbody className="divide-y divide-border">
             {points.map((p) => (
-              <>
-                <tr key={p.persistence} className="bg-background/40">
+              <Fragment key={p.persistence}>
+                <tr className="bg-background/40">
                   <td className="px-3 py-2 font-mono text-primary">{p.persistence.toFixed(2)}</td>
                   <td className="px-3 py-2 font-mono">{p.replicates.length}</td>
                   <td className="px-3 py-2 font-mono">{p.worlds}</td>
@@ -251,7 +251,7 @@ function ExperimentDetail() {
                       </td>
                     </tr>
                   ))}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
