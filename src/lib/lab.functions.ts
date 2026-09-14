@@ -815,54 +815,37 @@ export const createSweep = createServerFn({ method: "POST" })
     const supabase = await db();
     const cfg = data.config;
     const points = [...data.points].sort((a, b) => a - b);
+    const baseSeed = cfg.baseSeed ?? randomSeed();
 
     const { data: exp, error } = await supabase
       .from("experiments")
       .insert({
         type: "persistence_sweep",
         task_mode: cfg.taskMode,
-        fixed_config: cfg,
+        fixed_config: { ...cfg, baseSeed },
         sweep_points: points,
+        base_seed: baseSeed,
         status: "running",
       })
       .select()
       .single();
     if (error || !exp) throw new Error(error?.message ?? "could not create experiment");
 
+    // Each sweep point is a set of replicates; they run one after another.
     const runIds: Array<{ runId: string; persistence: number }> = [];
     for (const p of points) {
       const pointCfg = { ...cfg, persistence: p };
-      const { data: run, error: re } = await supabase
-        .from("runs")
-        .insert({
-          config: pointCfg,
+      for (let r = 0; r < cfg.replicates; r++) {
+        const made = await insertReplicate(supabase, pointCfg, {
+          baseSeed,
+          replicateIndex: r,
           status: "queued",
-          label: `persistence ${p}`,
-          experiment_id: exp.id,
-          sweep_value: p,
-        })
-        .select()
-        .single();
-      if (re || !run) throw new Error(re?.message ?? "could not create run");
-
-      for (let w = 0; w < cfg.worldCount; w++) {
-        const { data: world, error: we } = await supabase
-          .from("worlds")
-          .insert({ run_id: run.id, index: w, status: "running" })
-          .select()
-          .single();
-        if (we || !world) throw new Error(we?.message ?? "could not create world");
-        const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode);
-        const rows = tasks.map((t, i) => ({
-          world_id: world.id,
-          index: i,
-          task: t as unknown as Record<string, unknown>,
-          status: "running",
-        }));
-        const { error: ae } = await supabase.from("agents").insert(rows as never);
-        if (ae) throw new Error(ae.message);
+          label: `persistence ${p} · replicate ${r + 1}/${cfg.replicates}`,
+          experimentId: exp.id as string,
+          sweepValue: p,
+        });
+        runIds.push({ runId: made.runId, persistence: p });
       }
-      runIds.push({ runId: run.id as string, persistence: p });
     }
 
     return { experimentId: exp.id as string, runs: runIds };
