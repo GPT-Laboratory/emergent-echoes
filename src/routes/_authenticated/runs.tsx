@@ -3,11 +3,16 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { downloadRunJson, downloadSweepJson } from "@/lib/export-client";
+import {
+  downloadRunJson,
+  downloadSweepJson,
+  runFileNameFromConfig,
+  sweepFileNameFromConfig,
+} from "@/lib/export-client";
 import { exportExperiment, exportRun } from "@/lib/lab.functions";
 
 import { supabase } from "@/integrations/supabase/client";
-import { formatDuration, type LabConfig } from "@/lib/lab-types";
+import { AGENT_MODEL_ID, formatDuration, type LabConfig } from "@/lib/lab-types";
 
 export const Route = createFileRoute("/_authenticated/runs")({
   head: () => ({
@@ -43,7 +48,14 @@ type Row = {
 };
 
 type GroupItem =
-  | { kind: "experiment"; experimentId: string; runs: number; mode: string }
+  | {
+      kind: "experiment";
+      experimentId: string;
+      runs: number;
+      mode: string;
+      startedAt: string;
+      config: LabConfig | null;
+    }
   | { kind: "run"; run: Row };
 
 /** Sweep runs are listed under a header row for their parent experiment. */
@@ -60,6 +72,8 @@ function groupRows(rows: Row[]): GroupItem[] {
         experimentId: exp,
         runs: children.length,
         mode: children[0]?.config?.taskMode ?? "assisted",
+        startedAt: children[children.length - 1]?.started_at ?? children[children.length - 1]?.created_at ?? "",
+        config: children[0]?.config ?? null,
       });
       for (const child of rows.filter((x) => x.experiment_id === exp)) out.push({ kind: "run", run: child });
     } else if (!exp) {
@@ -171,9 +185,11 @@ function Runs() {
                         variant="secondary"
                         disabled={busy === item.experimentId}
                         onClick={() => void downloadSweep(item.experimentId)}
-                        className="font-mono text-[10px] uppercase tracking-widest"
+                        className="font-mono text-[10px] lowercase tracking-normal"
                       >
-                        {busy === item.experimentId ? "Building…" : "Download sweep"}
+                        {busy === item.experimentId
+                          ? "Building…"
+                          : sweepFileNameFromConfig(item.startedAt, item.mode, item.config, AGENT_MODEL_ID)}
                       </Button>
                     </div>
                   </td>
@@ -222,9 +238,15 @@ function Runs() {
                       variant="secondary"
                       disabled={busy === item.run.id}
                       onClick={() => void download(item.run.id)}
-                      className="font-mono text-[10px] uppercase tracking-widest"
+                      className="font-mono text-[10px] lowercase tracking-normal"
                     >
-                      {busy === item.run.id ? "Building…" : "Download JSON"}
+                      {busy === item.run.id
+                        ? "Building…"
+                        : runFileNameFromConfig(
+                            item.run.started_at ?? item.run.created_at,
+                            item.run.config,
+                            AGENT_MODEL_ID,
+                          )}
                     </Button>
                   </div>
                 </td>

@@ -1,27 +1,122 @@
-/** Turns a run export object into a downloaded, pretty-printed JSON file. */
-export function downloadRunJson(runId: string, doc: unknown) {
-  const stamp = new Date().toISOString();
+/** Filename helpers + downloads for run / sweep exports. */
+
+/** UTC YYYYMMDD-HHMM so alphabetical order equals chronological order. */
+function stamp(iso?: string | null): string {
+  const d = iso ? new Date(iso) : new Date();
+  const t = isNaN(d.getTime()) ? new Date() : d;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}${p(t.getUTCMonth() + 1)}${p(t.getUTCDate())}-${p(t.getUTCHours())}${p(t.getUTCMinutes())}`;
+}
+
+/** "openai/gpt-6-astra" -> "astra" */
+function modelShort(id: unknown): string {
+  const raw = typeof id === "string" ? id : "";
+  const last = raw.split("/").pop() ?? "";
+  const seg = last.split(/[-_.]/).filter(Boolean).pop() ?? "model";
+  return seg.toLowerCase();
+}
+
+/** 0.5 -> "05", 0.45 -> "045", 1 -> "1" */
+function persistenceTag(v: unknown): string {
+  const n = typeof v === "number" ? v : 0;
+  return String(n).replace(".", "");
+}
+
+type AnyDoc = Record<string, any>;
+
+export function runFileName(doc: unknown): string {
+  const d = (doc ?? {}) as AnyDoc;
+  const run = d['run'] ?? {};
+  const cfg = run.config ?? {};
+  return [
+    stamp(run.started_at),
+    "run",
+    String(cfg.task_mode ?? "assisted"),
+    String(cfg.scheduler_mode ?? "lockstep"),
+    modelShort(run.models?.agent_model),
+    `p${persistenceTag(cfg.persistence)}`,
+    `b${cfg.reasoning_budget_steps ?? 0}`,
+    `w${cfg.world_count ?? 0}`,
+  ].join("_") + ".json";
+}
+
+export function sweepFileName(doc: unknown): string {
+  const d = (doc ?? {}) as AnyDoc;
+  const exp = d['experiment'] ?? {};
+  const cfg = exp.fixed_config ?? {};
+  return [
+    stamp(exp.started_at),
+    `sweep-${String(exp.sweep_variable ?? "persistence")}`,
+    String(exp.task_mode ?? cfg.task_mode ?? "assisted"),
+    String(cfg.scheduler_mode ?? "lockstep"),
+    modelShort(exp.models?.agent_model),
+    `b${cfg.reasoning_budget_steps ?? 0}`,
+    `w${cfg.world_count ?? 0}`,
+  ].join("_") + ".json";
+}
+
+function save(name: string, doc: unknown) {
   const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `run-${runId}-${stamp}.json`;
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
 }
 
+/** Turns a run export object into a downloaded, pretty-printed JSON file. */
+export function downloadRunJson(_runId: string, doc: unknown) {
+  save(runFileName(doc), doc);
+}
+
 /** Same, for a whole sweep experiment. */
-export function downloadSweepJson(experimentId: string, doc: unknown) {
-  const stamp = new Date().toISOString();
-  const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `sweep-${experimentId}-${stamp}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+export function downloadSweepJson(_experimentId: string, doc: unknown) {
+  save(sweepFileName(doc), doc);
+}
+
+/** Filename built from list-row data (no export document loaded yet). */
+export function runFileNameFromConfig(
+  startedAt: string | null | undefined,
+  cfg: {
+    taskMode?: string;
+    schedulerMode?: string;
+    persistence?: number;
+    reasoningBudget?: number;
+    worldCount?: number;
+  } | null,
+  agentModelId: string,
+): string {
+  const c = cfg ?? {};
+  return [
+    stamp(startedAt),
+    "run",
+    String(c.taskMode ?? "assisted"),
+    String(c.schedulerMode ?? "lockstep"),
+    modelShort(agentModelId),
+    `p${persistenceTag(c.persistence ?? 0)}`,
+    `b${c.reasoningBudget ?? 0}`,
+    `w${c.worldCount ?? 0}`,
+  ].join("_") + ".json";
+}
+
+export function sweepFileNameFromConfig(
+  startedAt: string | null | undefined,
+  taskMode: string,
+  cfg: { schedulerMode?: string; reasoningBudget?: number; worldCount?: number } | null,
+  agentModelId: string,
+  sweepVariable = "persistence",
+): string {
+  const c = cfg ?? {};
+  return [
+    stamp(startedAt),
+    `sweep-${sweepVariable}`,
+    taskMode || "assisted",
+    String(c.schedulerMode ?? "lockstep"),
+    modelShort(agentModelId),
+    `b${c.reasoningBudget ?? 0}`,
+    `w${c.worldCount ?? 0}`,
+  ].join("_") + ".json";
 }
