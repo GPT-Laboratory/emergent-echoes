@@ -138,6 +138,7 @@ export type Database = {
       }
       experiments: {
         Row: {
+          base_seed: number | null
           created_at: string
           duration_ms: number | null
           finished_at: string | null
@@ -150,6 +151,7 @@ export type Database = {
           type: string
         }
         Insert: {
+          base_seed?: number | null
           created_at?: string
           duration_ms?: number | null
           finished_at?: string | null
@@ -162,6 +164,7 @@ export type Database = {
           type?: string
         }
         Update: {
+          base_seed?: number | null
           created_at?: string
           duration_ms?: number | null
           finished_at?: string | null
@@ -177,6 +180,7 @@ export type Database = {
       }
       runs: {
         Row: {
+          api_seed: number | null
           config: Json
           created_at: string
           duration_ms: number | null
@@ -184,11 +188,14 @@ export type Database = {
           finished_at: string | null
           id: string
           label: string | null
+          replicate_index: number
+          replicate_seed: number | null
           started_at: string
           status: string
           sweep_value: number | null
         }
         Insert: {
+          api_seed?: number | null
           config?: Json
           created_at?: string
           duration_ms?: number | null
@@ -196,11 +203,14 @@ export type Database = {
           finished_at?: string | null
           id?: string
           label?: string | null
+          replicate_index?: number
+          replicate_seed?: number | null
           started_at?: string
           status?: string
           sweep_value?: number | null
         }
         Update: {
+          api_seed?: number | null
           config?: Json
           created_at?: string
           duration_ms?: number | null
@@ -208,6 +218,8 @@ export type Database = {
           finished_at?: string | null
           id?: string
           label?: string | null
+          replicate_index?: number
+          replicate_seed?: number | null
           started_at?: string
           status?: string
           sweep_value?: number | null
@@ -362,6 +374,7 @@ export type Database = {
           run_id: string
           solicit_write: boolean
           status: string
+          task_seed: number | null
         }
         Insert: {
           created_at?: string
@@ -373,6 +386,7 @@ export type Database = {
           run_id: string
           solicit_write?: boolean
           status?: string
+          task_seed?: number | null
         }
         Update: {
           created_at?: string
@@ -384,6 +398,7 @@ export type Database = {
           run_id?: string
           solicit_write?: boolean
           status?: string
+          task_seed?: number | null
         }
         Relationships: [
           {
