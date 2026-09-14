@@ -386,10 +386,8 @@ async function runAgentStep(
     const raw = await chat({
       model: agentModelOf(cfg),
       system: agentSystemPrompt(agent.task, cfg, stepsLeft),
-      user: transcript
-        ? `Your work so far:\n\n${transcript}\n\nTake your next step.`
-        : "Take your first step.",
-      maxTokens: 600,
+      user: agentUserMessage(transcript),
+      maxTokens: AGENT_MAX_TOKENS,
       temperature: cfg.agentTemperature,
       reasoningEffort: cfg.agentReasoningEffort,
     });
