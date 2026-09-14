@@ -34,6 +34,16 @@ import {
 } from "./prompt-spec";
 import { generateWorldTasks, type AgentTask } from "./tasks";
 
+/**
+ * The locked effort, unless the provider actually refused it at runtime
+ * (recorded, never silently dropped — same treatment as temperature).
+ */
+function agentEffortEffective(cfg: LabConfig): string {
+  const model = agentModelOf(cfg);
+  if (effortRejected(model)) return "provider-fixed";
+  return effectiveReasoningEffort(model, cfg.agentReasoningEffort);
+}
+
 const ConfigSchema = z
   .object({
     taskMode: z.enum(["assisted", "emergent"]).default("assisted"),
@@ -781,7 +791,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
           provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
           agent_reasoning_effort: cfg.agentReasoningEffort,
           monitor_reasoning_effort: cfg.monitorReasoningEffort,
-          agent_reasoning_effort_effective: effectiveReasoningEffort(agentModelOf(cfg), cfg.agentReasoningEffort),
+          agent_reasoning_effort_effective: agentEffortEffective(cfg),
           monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL_ID, cfg.monitorReasoningEffort),
           reasoning_effort_locked: true,
           reasoning_effort_note:
@@ -1192,7 +1202,7 @@ export const exportExperiment = createServerFn({ method: "POST" })
           provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
           agent_reasoning_effort: cfg.agentReasoningEffort,
           monitor_reasoning_effort: cfg.monitorReasoningEffort,
-          agent_reasoning_effort_effective: effectiveReasoningEffort(agentModelOf(cfg), cfg.agentReasoningEffort),
+          agent_reasoning_effort_effective: agentEffortEffective(cfg),
           monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL_ID, cfg.monitorReasoningEffort),
           reasoning_effort_locked: true,
           reasoning_effort_note:
