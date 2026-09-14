@@ -192,6 +192,15 @@ function ExperimentDetail() {
   };
 
   const title = exp?.type === "replicate_set" ? "Replicate set" : "Persistence sweep";
+  const running = exp != null && exp.status !== "complete";
+
+  let etaMs: number | null = null;
+  if (running && exp && progress && progress.worldsDone >= 2 && progress.worldsDone < progress.worldsTotal) {
+    const elapsed = Date.now() - new Date(exp.started_at).getTime();
+    etaMs = Math.max(0, (elapsed / progress.worldsDone) * (progress.worldsTotal - progress.worldsDone));
+  }
+  const pct =
+    progress && progress.worldsTotal ? Math.round((progress.worldsDone / progress.worldsTotal) * 100) : 0;
 
   return (
     <main className="mx-auto max-w-[1200px] px-5 py-6">
