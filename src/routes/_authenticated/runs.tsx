@@ -48,7 +48,14 @@ type Row = {
 };
 
 type GroupItem =
-  | { kind: "experiment"; experimentId: string; runs: number; mode: string }
+  | {
+      kind: "experiment";
+      experimentId: string;
+      runs: number;
+      mode: string;
+      startedAt: string;
+      config: LabConfig | null;
+    }
   | { kind: "run"; run: Row };
 
 /** Sweep runs are listed under a header row for their parent experiment. */
