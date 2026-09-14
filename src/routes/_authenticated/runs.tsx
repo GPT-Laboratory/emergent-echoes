@@ -238,9 +238,15 @@ function Runs() {
                       variant="secondary"
                       disabled={busy === item.run.id}
                       onClick={() => void download(item.run.id)}
-                      className="font-mono text-[10px] uppercase tracking-widest"
+                      className="font-mono text-[10px] lowercase tracking-normal"
                     >
-                      {busy === item.run.id ? "Building…" : "Download JSON"}
+                      {busy === item.run.id
+                        ? "Building…"
+                        : runFileNameFromConfig(
+                            item.run.started_at ?? item.run.created_at,
+                            item.run.config,
+                            AGENT_MODEL_ID,
+                          )}
                     </Button>
                   </div>
                 </td>
