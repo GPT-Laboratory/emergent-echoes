@@ -24,6 +24,10 @@ import {
 } from "./lab-types";
 import { deriveSeed, randomSeed } from "./rng";
 import { spread, wilson } from "./stats";
+
+/** Characters a read() observation returns, and a write() stores. Recorded in every export. */
+export const STORE_READ_LIMIT = 800;
+export const STORE_WRITE_LIMIT = 2000;
 import {
   AGENT_MAX_TOKENS,
   MONITOR_MAX_TOKENS,
