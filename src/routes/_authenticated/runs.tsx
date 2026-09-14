@@ -300,7 +300,7 @@ function Runs() {
                           {openRow === item.run.id ? "▾" : "▸"}
                         </button>
                         {new Date(item.run.created_at).toLocaleString()}
-                        <span className="ml-2 text-muted-foreground">{item.run.status}</span>
+                        <StatusChip run={item.run} />
                       </td>
                       <td className="px-3 py-2 font-mono">
                         {new Date(item.run.started_at ?? item.run.created_at).toLocaleString()}
