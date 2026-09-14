@@ -185,7 +185,9 @@ function Runs() {
         .select("id,created_at,label,status,config,started_at,finished_at,duration_ms,experiment_id,sweep_value")
         .order("created_at", { ascending: false })
         .limit(50);
-      const { data: worlds } = await supabase.from("worlds").select("run_id,cross_agent_read,solicit_write");
+      const { data: worlds } = await supabase
+        .from("worlds")
+        .select("run_id,status,cross_agent_read,solicit_write");
       setRows(
         (runs ?? []).map((r) => {
           const ws = (worlds ?? []).filter((w) => w.run_id === r.id);
@@ -193,6 +195,7 @@ function Runs() {
             ...r,
             config: r.config as LabConfig,
             worlds: ws.length,
+            worldsDone: ws.filter((w) => w.status !== "running").length,
             emerged: ws.filter((w) => w.cross_agent_read || w.solicit_write).length,
           };
         }),
