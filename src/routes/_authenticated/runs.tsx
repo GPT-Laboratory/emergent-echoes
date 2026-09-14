@@ -3,7 +3,12 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { downloadRunJson, downloadSweepJson } from "@/lib/export-client";
+import {
+  downloadRunJson,
+  downloadSweepJson,
+  runFileNameFromConfig,
+  sweepFileNameFromConfig,
+} from "@/lib/export-client";
 import { exportExperiment, exportRun } from "@/lib/lab.functions";
 
 import { supabase } from "@/integrations/supabase/client";
