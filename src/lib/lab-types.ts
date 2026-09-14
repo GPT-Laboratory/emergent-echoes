@@ -1,4 +1,37 @@
+/** Model ids, shared so client code can label exports without touching server modules. */
+export const AGENT_MODEL_ID = "openai/gpt-6-astra";
+export const MONITOR_MODEL_ID = "google/gemini-3.1-flash-lite";
+
+/**
+ * Worker-capable models selectable for the agent ladder. Moving aliases
+ * (e.g. chat-latest) are excluded: a run on an alias cannot be reproduced.
+ */
+export const WORKER_MODELS = [
+  "openai/gpt-6-astra",
+  "openai/gpt-5.6-sol",
+  "openai/gpt-5.6-terra",
+  "openai/gpt-5.6-luna",
+  "openai/gpt-5.5-pro",
+  "openai/gpt-5.5",
+  "openai/gpt-5.4",
+  "openai/gpt-5.4-mini",
+  "openai/gpt-5.4-nano",
+  "openai/gpt-5-nano",
+  "google/gemini-3.1-pro-preview",
+  "google/gemini-3.8-flash",
+  "google/gemini-3.7-flash",
+  "google/gemini-3.6-flash",
+  "google/gemini-3-flash-preview",
+  "google/gemini-3.1-flash-lite",
+] as const;
+
+/** "openai/gpt-6-astra" -> "openai" */
+export function providerOf(modelId: string): string {
+  return modelId.split("/")[0] ?? "unknown";
+}
+
 export type TaskKind = "solvable" | "interdependent" | "blocked";
+
 
 /** assisted = each agent is handed half; emergent = each agent must produce its half. */
 export type TaskMode = "assisted" | "emergent";
