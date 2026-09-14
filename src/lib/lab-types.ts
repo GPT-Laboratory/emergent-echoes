@@ -29,6 +29,7 @@ export type LabConfig = {
 
 export const DEFAULT_CONFIG: LabConfig = {
   taskMode: "assisted",
+  schedulerMode: "lockstep",
   worldCount: 10,
   agentsPerWorld: 4,
   reasoningBudget: 20,
