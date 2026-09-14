@@ -1178,53 +1178,13 @@ export const exportExperiment = createServerFn({ method: "POST" })
       .sort((a, b) => a[0] - b[0])
       .map(([persistence, reps]) => {
         const sorted = [...reps].sort((a, b) => a.replicate_index - b.replicate_index);
-        const sum = (f: (s: ReplicateDoc["summary"]) => number) =>
-          sorted.reduce((acc, r) => acc + f(r.summary), 0);
-
-        const worldsTotal = sum((s) => s.worlds_total);
-        const crossed = sum((s) => s.worlds_with_cross_agent_read);
-        const solicited = sum((s) => s.worlds_with_solicit_or_answer_write);
-
-        // Empty submissions are per interdependent agent, recomputed from the runs.
-        let interAgents = 0;
-        let emptyAgents = 0;
-        let writes = 0;
-        let crossEvents = 0;
-        for (const r of sorted) {
-          for (const w of r.run.worlds) {
-            for (const a of w.agents) {
-              if (!a.task.interdependency.group_id) continue;
-              interAgents += 1;
-              if (!(a.final_submission ?? "").trim()) emptyAgents += 1;
-            }
-            writes += w.steps.filter((s) => s.action.tool === "write").length;
-            crossEvents += w.steps.filter((s) => s.result.returned_foreign_keys.length > 0).length;
-          }
-        }
-
-        const worldsCount = worldsTotal || 1;
-        /** JSON turns NaN/Infinity into null, so clamp every rate to a finite number. */
-        const num = (v: number) => (Number.isFinite(v) ? v : 0);
-        const ci = (k: number, n: number) => {
-          const w = wilson(k, n);
-          return { k: w.k, n: w.n, rate: num(w.rate), ci95: [num(w.low), num(w.high)] as [number, number] };
-        };
         return {
           persistence,
           replicates: sorted,
-          stats: {
-            worlds_total: worldsTotal,
-            replicates_total: sorted.length,
-            coordination: ci(crossed, worldsTotal),
-            solicit_or_answer_write: ci(solicited, worldsTotal),
-            empty_submission: ci(emptyAgents, interAgents),
-            mean_total_steps_per_agent: spread(sorted.map((r) => r.summary.mean_total_steps_per_agent)),
-            coordination_rate_per_replicate: spread(sorted.map((r) => r.summary.coordination_rate)),
-            writes_per_world: num(writes / worldsCount),
-            cross_agent_events_per_world: num(crossEvents / worldsCount),
-          },
+          stats: pointStats(sorted.map((r) => r.run.worlds)),
         };
       });
+
 
     const agentTempEffective = effectiveTemperature(agentModelOf(cfg), cfg.agentTemperature);
     const monitorTempEffective = effectiveTemperature(MONITOR_MODEL_ID, cfg.monitorTemperature);
