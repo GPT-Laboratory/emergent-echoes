@@ -239,7 +239,7 @@ export async function startSweep(
       }
     })();
 
-    await startDriver(point.runId, deps.tick, onError);
+    await startDriver(point.runId, deps.tick, onError, opts);
     polling = false;
     await poll.catch(() => null);
   }
