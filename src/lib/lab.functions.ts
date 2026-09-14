@@ -1051,18 +1051,25 @@ export const exportExperiment = createServerFn({ method: "POST" })
         }
 
         const worldsCount = worldsTotal || 1;
+        /** JSON turns NaN/Infinity into null, so clamp every rate to a finite number. */
+        const num = (v: number) => (Number.isFinite(v) ? v : 0);
+        const ci = (k: number, n: number) => {
+          const w = wilson(k, n);
+          return { k: w.k, n: w.n, rate: num(w.rate), ci95: [num(w.low), num(w.high)] as [number, number] };
+        };
         return {
           persistence,
           replicates: sorted,
           stats: {
             worlds_total: worldsTotal,
-            coordination: wilson(crossed, worldsTotal),
-            solicit_or_answer_write: wilson(solicited, worldsTotal),
-            empty_submission: wilson(emptyAgents, interAgents),
+            replicates_total: sorted.length,
+            coordination: ci(crossed, worldsTotal),
+            solicit_or_answer_write: ci(solicited, worldsTotal),
+            empty_submission: ci(emptyAgents, interAgents),
             mean_total_steps_per_agent: spread(sorted.map((r) => r.summary.mean_total_steps_per_agent)),
             coordination_rate_per_replicate: spread(sorted.map((r) => r.summary.coordination_rate)),
-            writes_per_world: writes / worldsCount,
-            cross_agent_events_per_world: crossEvents / worldsCount,
+            writes_per_world: num(writes / worldsCount),
+            cross_agent_events_per_world: num(crossEvents / worldsCount),
           },
         };
       });
