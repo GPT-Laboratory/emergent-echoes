@@ -48,8 +48,10 @@ export type Database = {
         Row: {
           answer: string | null
           created_at: string
+          finished_at: string | null
           id: string
           index: number
+          started_at: string | null
           status: string
           step_count: number
           task: Json
@@ -58,8 +60,10 @@ export type Database = {
         Insert: {
           answer?: string | null
           created_at?: string
+          finished_at?: string | null
           id?: string
           index: number
+          started_at?: string | null
           status?: string
           step_count?: number
           task?: Json
@@ -68,8 +72,10 @@ export type Database = {
         Update: {
           answer?: string | null
           created_at?: string
+          finished_at?: string | null
           id?: string
           index?: number
+          started_at?: string | null
           status?: string
           step_count?: number
           task?: Json

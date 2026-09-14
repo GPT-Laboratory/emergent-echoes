@@ -1,0 +1,1 @@
+ALTER TABLE public.agents ADD COLUMN IF NOT EXISTS started_at timestamptz, ADD COLUMN IF NOT EXISTS finished_at timestamptz;
