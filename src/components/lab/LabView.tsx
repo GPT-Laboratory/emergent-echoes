@@ -238,8 +238,12 @@ export function LabView({ runId }: { runId: string | null }) {
       solicitRate: Math.round((solicited / n) * 100),
       meanFirst,
       meanFirstFlag: flaggedFirst.length ? flaggedFirst.reduce((a, b) => a + b, 0) / flaggedFirst.length : null,
+      writeRate: pct(wroteIds.size, worlds.length),
+      awareRate: pct(awareIds.size, worlds.length),
+      ceilingRate: pct(ceilingAgents, runAgents.length),
+      correctRate: pct(correctAgents, interAgents.length),
     };
-  }, [worlds, exposedWorldIds]);
+  }, [worlds, exposedWorldIds, steps, runAgents, config.reasoningBudget]);
 
   /* ---- sweep across every recorded run, bucketed by the chosen knob ---- */
   const loadSweep = useCallback(async () => {
