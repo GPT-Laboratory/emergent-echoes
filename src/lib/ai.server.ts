@@ -43,6 +43,8 @@ export async function chat(opts: {
   user: string;
   maxTokens?: number;
   temperature?: number;
+  /** Locked per experiment; identical on every step. Never left to the gateway. */
+  reasoningEffort?: ReasoningEffort;
 }): Promise<string> {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("Missing LOVABLE_API_KEY");
@@ -53,6 +55,12 @@ export async function chat(opts: {
   const limit = opts.maxTokens ?? 700;
   const canSetTemperature = temperatureSupported(opts.model) && opts.temperature != null;
 
+  // Effort is an experimental factor: send it explicitly on every call so the
+  // gateway's per-model default can never silently shift the x-axis.
+  const requestedEffort: ReasoningEffort = opts.reasoningEffort ?? "low";
+  const effort = normalizeEffortForModel(opts.model, requestedEffort);
+  const sendsEffort = reasoningEffortSupported(opts.model);
+
   const body = JSON.stringify({
     model: opts.model,
     messages: [
@@ -61,8 +69,10 @@ export async function chat(opts: {
     ],
     ...(canSetTemperature ? { temperature: opts.temperature } : {}),
     ...(isOpenAiReasoning
-      ? { max_completion_tokens: Math.max(limit, 2000), reasoning_effort: "low" }
+      ? { max_completion_tokens: Math.max(limit, 2000), reasoning_effort: effort }
       : { max_tokens: limit }),
+    // Non-OpenAI models route through OpenRouter, which takes `reasoning`.
+    ...(sendsEffort && !isOpenAiReasoning ? { reasoning: { effort } } : {}),
   });
 
   let res: Response | null = null;
