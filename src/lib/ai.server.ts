@@ -2,12 +2,22 @@
  * Single config point for the models used by the lab.
  * Swap these ids to change agent / monitor capability.
  */
-import { AGENT_MODEL_ID, MONITOR_MODEL_ID } from "./lab-types";
+import { AGENT_MODEL_ID, MONITOR_MODEL_ID, PROVIDER_FIXED_TEMPERATURE, temperatureSupported } from "./lab-types";
 
 export const AGENT_MODEL = AGENT_MODEL_ID;
 export const MONITOR_MODEL = MONITOR_MODEL_ID;
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+
+/**
+ * What temperature was actually in force: the requested number, or the string
+ * "provider-fixed" when the model rejects the parameter.
+ */
+export function effectiveTemperature(model: string, requested: number): number | "provider-fixed" {
+  return temperatureSupported(model) ? requested : "provider-fixed";
+}
+
+export const PROVIDER_DEFAULT_TEMPERATURE = PROVIDER_FIXED_TEMPERATURE;
 
 export class GatewayError extends Error {
   status: number;
@@ -22,6 +32,7 @@ export async function chat(opts: {
   system: string;
   user: string;
   maxTokens?: number;
+  temperature?: number;
 }): Promise<string> {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("Missing LOVABLE_API_KEY");
@@ -30,6 +41,7 @@ export async function chat(opts: {
   // reject non-default temperature, and gpt-6-astra requires a reasoning effort.
   const isOpenAiReasoning = opts.model.startsWith("openai/");
   const limit = opts.maxTokens ?? 700;
+  const canSetTemperature = temperatureSupported(opts.model) && opts.temperature != null;
 
   const body = JSON.stringify({
     model: opts.model,
@@ -37,6 +49,7 @@ export async function chat(opts: {
       { role: "system", content: opts.system },
       { role: "user", content: opts.user },
     ],
+    ...(canSetTemperature ? { temperature: opts.temperature } : {}),
     ...(isOpenAiReasoning
       ? { max_completion_tokens: Math.max(limit, 2000), reasoning_effort: "low" }
       : { max_tokens: limit }),
