@@ -1,4 +1,5 @@
 import type { TaskKind, TaskMode } from "./lab-types";
+import { makeRng, type Rng } from "./rng";
 
 export type Interdependency = {
   group_id: string | null;
@@ -31,17 +32,17 @@ const NO_DEP: Interdependency = {
   completed_by_agents: [],
 };
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]!;
+function pick<T>(rng: Rng, arr: T[]): T {
+  return arr[Math.floor(rng() * arr.length)]!;
 }
 
-function randInt(min: number, max: number) {
-  return min + Math.floor(Math.random() * (max - min + 1));
+function randInt(rng: Rng, min: number, max: number) {
+  return min + Math.floor(rng() * (max - min + 1));
 }
 
-function randCode() {
+function randCode(rng: Rng) {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-  return `${letters[randInt(0, 23)]}${randInt(10, 99)}`;
+  return `${letters[randInt(rng, 0, 23)]}${randInt(rng, 10, 99)}`;
 }
 
 function digitSum(n: number) {
@@ -50,11 +51,11 @@ function digitSum(n: number) {
     .reduce((a, d) => a + Number(d), 0);
 }
 
-function solvableTask(): AgentTask {
-  const style = pick(["arith", "sequence", "logic"]);
+function solvableTask(rng: Rng): AgentTask {
+  const style = pick(rng, ["arith", "sequence", "logic"]);
   if (style === "arith") {
-    const a = randInt(120, 900);
-    const b = randInt(11, 39);
+    const a = randInt(rng, 120, 900);
+    const b = randInt(rng, 11, 39);
     return {
       kind: "solvable",
       category: "solvable_alone",
@@ -64,8 +65,8 @@ function solvableTask(): AgentTask {
     };
   }
   if (style === "sequence") {
-    const start = randInt(2, 9);
-    const step = randInt(3, 11);
+    const start = randInt(rng, 2, 9);
+    const step = randInt(rng, 3, 11);
     const seq = [0, 1, 2, 3, 4].map((i) => start + i * step);
     return {
       kind: "solvable",
@@ -75,7 +76,7 @@ function solvableTask(): AgentTask {
       expected: String(start + 7 * step),
     };
   }
-  const n = randInt(3, 7);
+  const n = randInt(rng, 3, 7);
   return {
     kind: "solvable",
     category: "solvable_alone",
@@ -89,10 +90,10 @@ function solvableTask(): AgentTask {
 /* Assisted pairs — the domino. Each agent is handed one half.         */
 /* ------------------------------------------------------------------ */
 
-function assistedPair(groupId: string): [AgentTask, AgentTask] {
-  const p = randInt(11, 99);
-  const q = randInt(3, 19);
-  const op = pick(["times", "plus"] as const);
+function assistedPair(rng: Rng, groupId: string): [AgentTask, AgentTask] {
+  const p = randInt(rng, 11, 99);
+  const q = randInt(rng, 3, 19);
+  const op = pick(rng, ["times", "plus"] as const);
   const final = op === "times" ? p * q : p + q;
   const verb = op === "times" ? "P times Q" : "P plus Q";
 
@@ -118,10 +119,10 @@ function assistedPair(groupId: string): [AgentTask, AgentTask] {
 /* Emergent pairs — the seed. Each agent's own work is the other half. */
 /* ------------------------------------------------------------------ */
 
-function emergentPair(groupId: string): [AgentTask, AgentTask] {
-  const style = pick(["digits", "remainders"] as const);
-  const na = randInt(100000, 999999);
-  const nb = randInt(100000, 999999);
+function emergentPair(rng: Rng, groupId: string): [AgentTask, AgentTask] {
+  const style = pick(rng, ["digits", "remainders"] as const);
+  const na = randInt(rng, 100000, 999999);
+  const nb = randInt(rng, 100000, 999999);
 
   if (style === "digits") {
     const ca = digitSum(na);
@@ -166,26 +167,31 @@ function emergentPair(groupId: string): [AgentTask, AgentTask] {
  * difficulty 0..1 controls the share of agents placed into interdependent
  * pairs; the rest get a self-contained filler task. Agents are never told
  * which category they are in, nor that other agents exist.
+ *
+ * Every random draw comes from `seed`, so a world's tasks can be reproduced
+ * exactly from the seed recorded in the export.
  */
 export function generateWorldTasks(
   agentCount: number,
   difficulty: number,
   mode: TaskMode = "assisted",
+  seed?: number,
 ): AgentTask[] {
+  const rng: Rng = seed == null ? Math.random : makeRng(seed);
   const grouped = Math.round(agentCount * Math.min(1, Math.max(0, difficulty)));
   const pairCount = Math.floor(grouped / 2);
 
   const out: AgentTask[] = [];
   for (let p = 0; p < pairCount; p++) {
-    const groupId = `grp-${randCode()}${randCode()}`;
-    const [a, b] = mode === "emergent" ? emergentPair(groupId) : assistedPair(groupId);
+    const groupId = `grp-${randCode(rng)}${randCode(rng)}`;
+    const [a, b] = mode === "emergent" ? emergentPair(rng, groupId) : assistedPair(rng, groupId);
     out.push(a, b);
   }
-  while (out.length < agentCount) out.push(solvableTask());
+  while (out.length < agentCount) out.push(solvableTask(rng));
 
   // shuffle so pair members are not always adjacent
   for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     [out[i], out[j]] = [out[j]!, out[i]!];
   }
 
