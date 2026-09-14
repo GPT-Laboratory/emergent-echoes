@@ -257,7 +257,6 @@ export function RunHeader({
   ].join(" · ");
 
   const line2 = [
-    row.status,
     `started ${started ? new Date(started).toLocaleString() : "—"}`,
     `duration ${durationMs != null ? formatDuration(durationMs) : "—"}`,
     `base seed ${cfg.baseSeed ?? "—"}`,
@@ -266,10 +265,14 @@ export function RunHeader({
   return (
     <div className={["rounded-md border border-border bg-card/70 px-3 py-2", className ?? ""].join(" ")}>
       <p className="font-mono text-[11px] leading-relaxed text-foreground">{line1}</p>
-      <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">{line2}</p>
+      <p className="flex flex-wrap items-center gap-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+        {row.status === "complete" ? <CompleteBadge /> : <span>{row.status}</span>}
+        <span>{line2}</span>
+      </p>
       <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">
         {cfg.runNote?.trim() ? cfg.runNote : "no run note"}
       </p>
+      {progress && <ProgressBar progress={progress} status={row.status} />}
     </div>
   );
 }
