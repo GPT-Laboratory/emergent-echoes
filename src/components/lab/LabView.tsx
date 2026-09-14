@@ -278,6 +278,41 @@ export function LabView({ runId }: { runId: string | null }) {
             </p>
           </div>
 
+          <div className="space-y-2">
+            <div className="label-caps">Scheduler</div>
+            <div className="grid grid-cols-2 gap-2">
+              {(["lockstep", "async"] as const).map((m) => {
+                const active = config.schedulerMode === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={readOnly}
+                    aria-pressed={active}
+                    onClick={() => setConfig({ ...config, schedulerMode: m })}
+                    title={
+                      m === "lockstep"
+                        ? "Every agent takes exactly one step per tick and waits for the others."
+                        : "No barrier: each agent's next step is dispatched as soon as its previous one returns."
+                    }
+                    className={[
+                      "rounded-md border px-2 py-2 font-mono text-[11px] uppercase tracking-widest transition-colors",
+                      active
+                        ? "border-primary bg-primary/20 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground",
+                      readOnly ? "cursor-not-allowed opacity-60" : "",
+                    ].join(" ")}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs leading-snug text-muted-foreground">
+              Async removes the wait-for-everyone barrier. Interleaving then comes only from real model latency.
+            </p>
+          </div>
+
           <ConfigPanel config={config} onChange={(p) => setConfig({ ...config, ...p })} disabled={readOnly} />
 
           <div className="flex flex-wrap gap-2">
