@@ -238,7 +238,8 @@ export function LabView({ runId }: { runId: string | null }) {
             </p>
             {runId && (
               <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                run {runId.slice(0, 8)} · {config.taskMode} · {runStatus ?? "…"} {driving ? "· driving" : ""}
+                run {runId.slice(0, 8)} · {config.taskMode} · {config.schedulerMode} · {runStatus ?? "…"}{" "}
+                {driving ? "· driving" : ""}
               </p>
             )}
           </div>
