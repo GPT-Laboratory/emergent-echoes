@@ -176,10 +176,52 @@ export function LabView({ runId }: { runId: string | null }) {
     return ids;
   }, [steps]);
 
+  /* ---- agents of this run, for the correctness + ceiling funnel stages ---- */
+  const [runAgents, setRunAgents] = useState<
+    Array<{ answer: string | null; task: Record<string, unknown> | null; step_count: number | null }>
+  >([]);
+  useEffect(() => {
+    if (!runId || worlds.length === 0) {
+      setRunAgents([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("agents")
+        .select("answer,task,step_count")
+        .in(
+          "world_id",
+          worlds.map((w) => w.id),
+        );
+      if (!cancelled) setRunAgents((data ?? []) as never);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, worlds]);
+
   const stats = useMemo(() => {
     const n = worlds.length || 1;
     const crossed = worlds.filter((w) => w.cross_agent_read);
     const exposed = worlds.filter((w) => exposedWorldIds.has(w.id));
+    const wroteIds = new Set(
+      steps.filter((s) => String((s.action as Record<string, unknown>)["tool"] ?? "") === "write").map((s) => s.world_id),
+    );
+    const awareIds = new Set(
+      steps.filter((s) => awarenessRank((s as { awareness_label?: string | null }).awareness_label ?? null) > 0).map((s) => s.world_id),
+    );
+    const budget = Math.max(2, Math.round(config.reasoningBudget));
+    const ceilingAgents = runAgents.filter((a) => (a.step_count ?? 0) >= budget).length;
+    const interAgents = runAgents.filter(
+      (a) => ((a.task ?? {})["interdependency"] as Record<string, unknown> | null)?.["group_id"],
+    );
+    const correctAgents = interAgents.filter((a) => {
+      const expected = (a.task ?? {})["expected"];
+      const got = String(a.answer ?? "").trim().match(/-?\d+/g) ?? [];
+      return got.length === 1 && expected != null && Number(got[0]) === Number(String(expected));
+    }).length;
+    const pct = (k: number, d: number) => (d ? Math.round((k / d) * 100) : 0);
     const wExp = wilson(exposed.length, worlds.length);
     const solicited = worlds.filter((w) => w.solicit_write).length;
     const meanFirst =
