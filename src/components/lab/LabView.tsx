@@ -413,7 +413,7 @@ export function LabView({ runId }: { runId: string | null }) {
 
           {sweepProgress && !sweepProgress.finished && (
             <div className="rounded-md border border-border bg-card/70 p-2 font-mono text-[11px] text-muted-foreground">
-              {config.taskMode} · {config.schedulerMode} · sweep point {sweepProgress.pointIndex + 1}/
+              {config.agentModel} · {config.taskMode} · {config.schedulerMode} · sweep point {sweepProgress.pointIndex + 1}/
               {sweepProgress.totalPoints} · persistence{" "}
               {sweepProgress.persistence} · worlds {sweepProgress.worldsDone}/{sweepProgress.worldsTotal}
               <button
