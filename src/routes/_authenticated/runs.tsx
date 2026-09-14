@@ -5,6 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { Button } from "@/components/ui/button";
 import {
+  downloadPromptsAppendix,
   downloadRunJson,
   downloadSweepJson,
   runFileNameFromConfig,
@@ -13,7 +14,8 @@ import {
 import { exportExperiment, exportRun } from "@/lib/lab.functions";
 
 import { supabase } from "@/integrations/supabase/client";
-import { AGENT_MODEL_ID, formatDuration, type LabConfig } from "@/lib/lab-types";
+import { AGENT_MODEL_ID, DEFAULT_CONFIG, formatDuration, type LabConfig } from "@/lib/lab-types";
+import { buildPromptsAppendix } from "@/lib/prompt-spec";
 import { wilson } from "@/lib/stats";
 
 export const Route = createFileRoute("/_authenticated/runs")({
@@ -369,6 +371,25 @@ function Runs() {
                       <tr className="bg-background/60">
                         <td colSpan={9} className="px-3 py-2">
                           <RunHeader run={item.run as unknown as RunRow} />
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              const cfg = { ...DEFAULT_CONFIG, ...(item.run.config ?? {}) } as LabConfig;
+                              downloadPromptsAppendix(
+                                buildPromptsAppendix(cfg, {
+                                  runId: item.run.id,
+                                  startedAt: item.run.started_at ?? item.run.created_at,
+                                  label: cfg.runNote,
+                                }),
+                                item.run.started_at ?? item.run.created_at,
+                                cfg,
+                              );
+                            }}
+                            className="mt-2 font-mono text-[10px] lowercase tracking-normal"
+                          >
+                            Prompt appendix (.md)
+                          </Button>
                         </td>
                       </tr>
                     )}

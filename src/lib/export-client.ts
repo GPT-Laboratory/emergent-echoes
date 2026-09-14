@@ -120,3 +120,35 @@ export function sweepFileNameFromConfig(
     `w${c.worldCount ?? 0}`,
   ].join("_") + ".json";
 }
+
+/** Appendix A filename, mirroring the run naming so it sorts alongside it. */
+export function appendixFileName(
+  startedAt: string | null | undefined,
+  cfg: { taskMode?: string; agentModel?: string; agentReasoningEffort?: string; persistence?: number },
+): string {
+  return [
+    stamp(startedAt),
+    "prompts-appendix-a",
+    String(cfg.taskMode ?? "assisted"),
+    modelShort(cfg.agentModel),
+    `e${String(cfg.agentReasoningEffort ?? "low")}`,
+    `p${persistenceTag(cfg.persistence ?? 0)}`,
+  ].join("_") + ".md";
+}
+
+/** Renders Appendix A from the live prompt code for this config and downloads it. */
+export function downloadPromptsAppendix(
+  markdown: string,
+  startedAt: string | null | undefined,
+  cfg: { taskMode?: string; agentModel?: string; agentReasoningEffort?: string; persistence?: number },
+) {
+  const blob = new Blob([markdown], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = appendixFileName(startedAt, cfg);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

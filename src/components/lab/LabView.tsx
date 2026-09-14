@@ -8,7 +8,8 @@ import { PropensityChart, type SweepPoint } from "@/components/lab/PropensityCha
 import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
-import { downloadRunJson } from "@/lib/export-client";
+import { downloadPromptsAppendix, downloadRunJson } from "@/lib/export-client";
+import { buildPromptsAppendix } from "@/lib/prompt-spec";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
 import { wilson } from "@/lib/stats";
 import {
@@ -446,6 +447,24 @@ export function LabView({ runId }: { runId: string | null }) {
                 {exporting ? "Building…" : "Download JSON"}
               </Button>
             )}
+            <Button
+              variant="outline"
+              title="Appendix A, rendered from the live prompt code for exactly this model, effort and task mix."
+              onClick={() =>
+                downloadPromptsAppendix(
+                  buildPromptsAppendix(config, {
+                    runId,
+                    startedAt: runRow?.started_at ?? null,
+                    label: config.runNote,
+                  }),
+                  runRow?.started_at ?? null,
+                  config,
+                )
+              }
+              className="font-mono text-xs uppercase tracking-widest"
+            >
+              Prompt appendix
+            </Button>
           </div>
 
           {!runId && (
