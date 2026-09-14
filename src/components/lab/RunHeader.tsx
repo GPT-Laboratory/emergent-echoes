@@ -35,6 +35,136 @@ export function ProvisionalBadge({ status }: { status: string | null | undefined
   );
 }
 
+export function CompleteBadge() {
+  return (
+    <span className="rounded-sm border border-primary/60 bg-primary/15 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-primary">
+      ✓ Complete
+    </span>
+  );
+}
+
+export type RunProgress = {
+  done: number;
+  total: number;
+  etaMs: number | null;
+  point: { index: number; total: number; sweepValue: number | null } | null;
+};
+
+/**
+ * World-level progress straight from the database, so a refresh mid-run still
+ * shows the true position. The estimate is throughput based: worlds finished
+ * per elapsed second, extrapolated over the worlds still running.
+ */
+export function useRunProgress(runId: string | null | undefined, run?: RunRow | null): RunProgress | null {
+  const [counts, setCounts] = useState<{ done: number; total: number } | null>(null);
+  const [point, setPoint] = useState<RunProgress["point"]>(null);
+  const [, setTick] = useState(0);
+
+  const experimentId = run?.experiment_id ?? null;
+  const startedAt = run?.started_at ?? run?.created_at ?? null;
+  const status = run?.status ?? null;
+
+  useEffect(() => {
+    if (!runId) {
+      setCounts(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase.from("worlds").select("id,status").eq("run_id", runId);
+      if (cancelled || !data) return;
+      setCounts({
+        done: data.filter((w) => w.status !== "running").length,
+        total: data.length,
+      });
+    };
+    void load();
+    const channel = supabase
+      .channel(`progress-${runId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "worlds" }, () => void load())
+      .subscribe();
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [runId]);
+
+  useEffect(() => {
+    if (!experimentId || !runId) {
+      setPoint(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from("runs")
+        .select("id,sweep_value,created_at")
+        .eq("experiment_id", experimentId)
+        .order("created_at", { ascending: true });
+      if (cancelled || !data) return;
+      const idx = data.findIndex((r) => r.id === runId);
+      if (idx < 0) return;
+      setPoint({
+        index: idx + 1,
+        total: data.length,
+        sweepValue: data[idx]?.sweep_value == null ? null : Number(data[idx]!.sweep_value),
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [experimentId, runId]);
+
+  /** Re-evaluate the estimate every few seconds while the run is live. */
+  useEffect(() => {
+    if (status !== "running") return;
+    const id = setInterval(() => setTick((t) => t + 1), 5000);
+    return () => clearInterval(id);
+  }, [status]);
+
+  if (!counts) return null;
+
+  let etaMs: number | null = null;
+  if (status === "running" && startedAt && counts.done >= 2 && counts.done < counts.total) {
+    const elapsed = Date.now() - new Date(startedAt).getTime();
+    const perWorld = elapsed / counts.done;
+    etaMs = Math.max(0, perWorld * (counts.total - counts.done));
+  }
+
+  return { done: counts.done, total: counts.total, etaMs, point };
+}
+
+export function ProgressBar({ progress, status }: { progress: RunProgress; status: string | null | undefined }) {
+  if (status !== "running" || progress.total === 0) return null;
+  const pct = Math.round((progress.done / progress.total) * 100);
+  return (
+    <div className="mt-2">
+      <div className="h-1.5 w-full overflow-hidden rounded-sm bg-muted">
+        <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+        {progress.done} / {progress.total} worlds
+        {progress.point
+          ? ` · point ${progress.point.index} of ${progress.point.total}${
+              progress.point.sweepValue != null ? `, persistence ${progress.point.sweepValue}` : ""
+            }`
+          : ""}
+        {" · "}
+        {progress.etaMs == null ? "estimating…" : `~${formatEta(progress.etaMs)} left`}
+      </p>
+    </div>
+  );
+}
+
+function formatEta(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h} h ${m % 60} min`;
+}
+
 function tempLabel(cfg: LabConfig): string {
   return temperatureSupported(cfg.agentModel)
     ? cfg.agentTemperature.toFixed(2)
