@@ -1107,6 +1107,12 @@ export const exportExperiment = createServerFn({ method: "POST" })
         models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
         sweep_variable: "persistence",
         sweep_points: (exp.sweep_points ?? []) as number[],
+        seed_policy: {
+          replicate_seed: "base_seed + replicate_index; drives per-world task_seed",
+          api_seed_supported: false,
+          api_seed_note:
+            "The model provider exposes no request-level seed, so api_seed is null by design; model sampling is not reproducible.",
+        },
       },
       points,
       sweep_summary: {
