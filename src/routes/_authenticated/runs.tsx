@@ -185,9 +185,11 @@ function Runs() {
                         variant="secondary"
                         disabled={busy === item.experimentId}
                         onClick={() => void downloadSweep(item.experimentId)}
-                        className="font-mono text-[10px] uppercase tracking-widest"
+                        className="font-mono text-[10px] lowercase tracking-normal"
                       >
-                        {busy === item.experimentId ? "Building…" : "Download sweep"}
+                        {busy === item.experimentId
+                          ? "Building…"
+                          : sweepFileNameFromConfig(item.startedAt, item.mode, item.config, AGENT_MODEL_ID)}
                       </Button>
                     </div>
                   </td>
