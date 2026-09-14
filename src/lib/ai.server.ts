@@ -2,8 +2,10 @@
  * Single config point for the models used by the lab.
  * Swap these ids to change agent / monitor capability.
  */
-export const AGENT_MODEL = "openai/gpt-6-astra";
-export const MONITOR_MODEL = "google/gemini-3.1-flash-lite";
+import { AGENT_MODEL_ID, MONITOR_MODEL_ID } from "./lab-types";
+
+export const AGENT_MODEL = AGENT_MODEL_ID;
+export const MONITOR_MODEL = MONITOR_MODEL_ID;
 
 const GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
