@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 
 import { AgentPanel } from "@/components/lab/AgentPanel";
+import { RunHeader } from "@/components/lab/RunHeader";
 import { ScratchStore } from "@/components/lab/ScratchStore";
 import { Button } from "@/components/ui/button";
 import { useWorldDetail } from "@/lib/lab-client";
@@ -95,6 +96,8 @@ export function WorldDetailView({ worldId, runId }: { worldId: string; runId: st
           </Button>
         )}
       </div>
+
+      <RunHeader runId={runId} className="mb-5" />
 
       {openAlert && (
         <div className="mb-5 rounded-md border border-destructive/60 bg-destructive/10 p-4">
