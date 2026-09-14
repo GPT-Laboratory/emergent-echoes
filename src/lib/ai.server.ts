@@ -6,11 +6,13 @@ import {
   AGENT_MODEL_ID,
   MONITOR_MODEL_ID,
   PROVIDER_FIXED_TEMPERATURE,
+  anthropicApiId,
   normalizeEffortForModel,
   reasoningEffortSupported,
   temperatureSupported,
   type ReasoningEffort,
 } from "./lab-types";
+
 
 export { effectiveReasoningEffort } from "./lab-types";
 
