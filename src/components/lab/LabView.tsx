@@ -9,7 +9,7 @@ import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/compo
 import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadPromptsAppendix, downloadRunJson } from "@/lib/export-client";
-import { buildPromptsAppendix } from "@/lib/prompt-spec";
+import { awarenessRank, buildPromptsAppendix } from "@/lib/prompt-spec";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
 import { wilson } from "@/lib/stats";
 import {
