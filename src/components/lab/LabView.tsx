@@ -10,6 +10,7 @@ import { WorldTile } from "@/components/lab/WorldTile";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadRunJson } from "@/lib/export-client";
 import { useRunSteps, useWorlds } from "@/lib/lab-client";
+import { wilson } from "@/lib/stats";
 import {
   activateRun,
   createReplicateSet,
@@ -277,6 +278,7 @@ export function LabView({ runId }: { runId: string | null }) {
   };
 
   const readOnly = runId != null;
+  const provisional = runId != null && isProvisional(runStatus);
 
   return (
     <main className="mx-auto max-w-[1600px] px-5 py-6">
