@@ -2,7 +2,17 @@
  * Single config point for the models used by the lab.
  * Swap these ids to change agent / monitor capability.
  */
-import { AGENT_MODEL_ID, MONITOR_MODEL_ID, PROVIDER_FIXED_TEMPERATURE, temperatureSupported } from "./lab-types";
+import {
+  AGENT_MODEL_ID,
+  MONITOR_MODEL_ID,
+  PROVIDER_FIXED_TEMPERATURE,
+  normalizeEffortForModel,
+  reasoningEffortSupported,
+  temperatureSupported,
+  type ReasoningEffort,
+} from "./lab-types";
+
+export { effectiveReasoningEffort } from "./lab-types";
 
 export const AGENT_MODEL = AGENT_MODEL_ID;
 export const MONITOR_MODEL = MONITOR_MODEL_ID;
@@ -33,6 +43,8 @@ export async function chat(opts: {
   user: string;
   maxTokens?: number;
   temperature?: number;
+  /** Locked per experiment; identical on every step. Never left to the gateway. */
+  reasoningEffort?: ReasoningEffort;
 }): Promise<string> {
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("Missing LOVABLE_API_KEY");
@@ -43,6 +55,12 @@ export async function chat(opts: {
   const limit = opts.maxTokens ?? 700;
   const canSetTemperature = temperatureSupported(opts.model) && opts.temperature != null;
 
+  // Effort is an experimental factor: send it explicitly on every call so the
+  // gateway's per-model default can never silently shift the x-axis.
+  const requestedEffort: ReasoningEffort = opts.reasoningEffort ?? "low";
+  const effort = normalizeEffortForModel(opts.model, requestedEffort);
+  const sendsEffort = reasoningEffortSupported(opts.model);
+
   const body = JSON.stringify({
     model: opts.model,
     messages: [
@@ -51,8 +69,10 @@ export async function chat(opts: {
     ],
     ...(canSetTemperature ? { temperature: opts.temperature } : {}),
     ...(isOpenAiReasoning
-      ? { max_completion_tokens: Math.max(limit, 2000), reasoning_effort: "low" }
+      ? { max_completion_tokens: Math.max(limit, 2000), reasoning_effort: effort }
       : { max_tokens: limit }),
+    // Non-OpenAI models route through OpenRouter, which takes `reasoning`.
+    ...(sendsEffort && !isOpenAiReasoning ? { reasoning: { effort } } : {}),
   });
 
   let res: Response | null = null;

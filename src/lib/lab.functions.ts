@@ -10,7 +10,14 @@ import {
   extractJson,
   GatewayError,
 } from "./ai.server";
-import { DEFAULT_CONFIG, MONITOR_LABELS, formatDuration, type LabConfig } from "./lab-types";
+import {
+  DEFAULT_CONFIG,
+  MONITOR_LABELS,
+  REASONING_EFFORTS,
+  effectiveReasoningEffort,
+  formatDuration,
+  type LabConfig,
+} from "./lab-types";
 import { deriveSeed, randomSeed } from "./rng";
 import { spread, wilson } from "./stats";
 import { generateWorldTasks, type AgentTask } from "./tasks";
@@ -31,6 +38,8 @@ const ConfigSchema = z.object({
   replicates: z.number().int().min(1).max(10).default(3),
   baseSeed: z.number().int().nullable().default(null),
   sameTasksAcrossReplicates: z.boolean().default(false),
+  agentReasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
+  monitorReasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
 });
 
 async function db() {
@@ -412,6 +421,7 @@ async function runAgentStep(
         : "Take your first step.",
       maxTokens: 600,
       temperature: cfg.agentTemperature,
+      reasoningEffort: cfg.agentReasoningEffort,
     });
     rawOutput = raw;
     const parsed = extractJson<{
@@ -526,6 +536,7 @@ async function runAgentStep(
       user: `Worker reasoning:\n${reasoning || "(none)"}\n\nChosen action:\n${JSON.stringify(action)}\n\nResult:\n${observation}`,
       maxTokens: 200,
       temperature: cfg.monitorTemperature,
+      reasoningEffort: cfg.monitorReasoningEffort,
     });
     const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(raw);
     if (parsed) {
@@ -796,6 +807,13 @@ async function buildRunExport(supabase: Supa, runId: string) {
           agent_temperature_effective: agentTempEffective,
           monitor_temperature_effective: monitorTempEffective,
           provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
+          agent_reasoning_effort: cfg.agentReasoningEffort,
+          monitor_reasoning_effort: cfg.monitorReasoningEffort,
+          agent_reasoning_effort_effective: effectiveReasoningEffort(AGENT_MODEL, cfg.agentReasoningEffort),
+          monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL, cfg.monitorReasoningEffort),
+          reasoning_effort_locked: true,
+          reasoning_effort_note:
+            "Sent explicitly on every model call and held constant for all steps. 'gateway-default' would mean the model rejected the parameter and the gateway default applied.",
           replicates: cfg.replicates,
           base_seed: cfg.baseSeed ?? null,
           same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
@@ -1106,6 +1124,13 @@ export const exportExperiment = createServerFn({ method: "POST" })
           agent_temperature_effective: agentTempEffective,
           monitor_temperature_effective: monitorTempEffective,
           provider_default_temperature: PROVIDER_DEFAULT_TEMPERATURE,
+          agent_reasoning_effort: cfg.agentReasoningEffort,
+          monitor_reasoning_effort: cfg.monitorReasoningEffort,
+          agent_reasoning_effort_effective: effectiveReasoningEffort(AGENT_MODEL, cfg.agentReasoningEffort),
+          monitor_reasoning_effort_effective: effectiveReasoningEffort(MONITOR_MODEL, cfg.monitorReasoningEffort),
+          reasoning_effort_locked: true,
+          reasoning_effort_note:
+            "Sent explicitly on every model call and held constant for all steps and all sweep points. 'gateway-default' would mean the model rejected the parameter and the gateway default applied.",
         },
         models: { agent_model: AGENT_MODEL, monitor_model: MONITOR_MODEL },
         sweep_variable: "persistence",

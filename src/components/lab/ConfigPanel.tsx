@@ -1,6 +1,6 @@
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import type { LabConfig } from "@/lib/lab-types";
+import { REASONING_EFFORTS, type LabConfig, type ReasoningEffort } from "@/lib/lab-types";
 
 function Knob({
   label,
@@ -149,6 +149,46 @@ export function ConfigPanel({
         <p className="font-mono text-[11px] text-muted-foreground">
           temperature · agent {config.agentTemperature.toFixed(1)} · monitor {config.monitorTemperature.toFixed(1)} ·
           fixed and recorded, not tuned
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="label-caps">Reasoning effort</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="space-y-1">
+            <span className="block font-mono text-[11px] text-muted-foreground">agent</span>
+            <select
+              className="w-full rounded-sm border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
+              value={config.agentReasoningEffort}
+              disabled={disabled ?? false}
+              onChange={(e) => onChange({ agentReasoningEffort: e.target.value as ReasoningEffort })}
+            >
+              {REASONING_EFFORTS.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="block font-mono text-[11px] text-muted-foreground">monitor</span>
+            <select
+              className="w-full rounded-sm border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
+              value={config.monitorReasoningEffort}
+              disabled={disabled ?? false}
+              onChange={(e) => onChange({ monitorReasoningEffort: e.target.value as ReasoningEffort })}
+            >
+              {REASONING_EFFORTS.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="text-xs leading-snug text-muted-foreground">
+          Sent explicitly on every model call and held constant across all steps, so the gateway default can never move
+          the capability axis. Recorded in every export.
         </p>
       </div>
     </div>
