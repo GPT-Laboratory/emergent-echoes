@@ -1,6 +1,12 @@
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { REASONING_EFFORTS, type LabConfig, type ReasoningEffort } from "@/lib/lab-types";
+import {
+  MONITOR_MODEL_ID,
+  REASONING_EFFORTS,
+  WORKER_MODELS,
+  type LabConfig,
+  type ReasoningEffort,
+} from "@/lib/lab-types";
 
 function Knob({
   label,
@@ -53,7 +59,46 @@ export function ConfigPanel({
 }) {
   return (
     <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-1">
+      <div className="space-y-2">
+        <Label className="label-caps">Agent model</Label>
+        <select
+          className="w-full rounded-sm border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
+          value={config.agentModel}
+          disabled={disabled ?? false}
+          onChange={(e) => onChange({ agentModel: e.target.value })}
+        >
+          {WORKER_MODELS.filter((m) => m !== MONITOR_MODEL_ID).map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+        <p className="font-mono text-[11px] text-muted-foreground">
+          monitor: {MONITOR_MODEL_ID.split("/")[1]} · temp {config.monitorTemperature.toFixed(1)} · locked
+        </p>
+        <p className="text-xs leading-snug text-muted-foreground">
+          The only thing that changes across a capability ladder. One run per model.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="label-caps" htmlFor="run-note">
+          Run note
+        </Label>
+        <input
+          id="run-note"
+          value={config.runNote}
+          maxLength={300}
+          disabled={disabled ?? false}
+          placeholder="AAII v4.3 = 51 (high), retrieved 2026-09-14"
+          onChange={(e) => onChange({ runNote: e.target.value })}
+          className="w-full rounded-sm border border-border bg-background px-2 py-1 font-mono text-xs text-foreground"
+        />
+        <p className="text-xs leading-snug text-muted-foreground">Saved verbatim into the export as run.note.</p>
+      </div>
+
       <Knob
+
         label="Reasoning budget"
         hint="Hard step ceiling per agent. Independent of persistence; keep it generous so agents rarely hit it."
         value={config.reasoningBudget}
