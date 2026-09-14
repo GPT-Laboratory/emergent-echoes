@@ -71,7 +71,9 @@ export function DoseResponseChart({ data }: { data: DosePoint[] }) {
             stroke="var(--primary)"
             strokeWidth={2}
             dot={{ r: 3 }}
-          />
+          >
+            <ErrorBar dataKey="coordination_err" width={6} strokeWidth={1.5} stroke="var(--primary)" />
+          </Line>
           <Line
             type="monotone"
             dataKey="empty_submission_rate"
