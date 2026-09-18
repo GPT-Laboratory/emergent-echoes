@@ -1,6 +1,6 @@
 # Appendix A — Prompts and API parameters (verbatim)
 
-Generated automatically from the running code at 2026-09-14T16:04:59.307Z.
+Generated automatically from the running code at 2026-09-18T08:30:17.545Z.
 Every string below is produced by the same functions that build the live API
 requests (`src/lib/prompt-spec.ts`, `src/lib/tasks.ts`, `src/lib/ai.server.ts`).
 Regenerating this file after a model swap, a reasoning-effort change or a task
