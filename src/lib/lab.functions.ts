@@ -127,7 +127,7 @@ async function insertReplicate(
   const { data: run, error } = await supabase
     .from("runs")
     .insert({
-      config: { ...cfg, baseSeed: opts.baseSeed, instrumentVersion: INSTRUMENT_VERSION, outputTokenCeiling: WORKER_OUTPUT_TOKEN_CEILING, monitorOutputTokenCeiling: MONITOR_MAX_TOKENS },
+      config: { ...cfg, baseSeed: opts.baseSeed, instrumentVersion: INSTRUMENT_VERSION, taskGeneratorVersion: TASK_GENERATOR_VERSION, outputTokenCeiling: WORKER_OUTPUT_TOKEN_CEILING, monitorOutputTokenCeiling: MONITOR_MAX_TOKENS },
       status: opts.status,
       label: opts.label ?? null,
       experiment_id: opts.experimentId ?? null,
@@ -149,7 +149,7 @@ async function insertReplicate(
       .single();
     if (we || !world) throw new Error(we?.message ?? "could not create world");
 
-    const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode, taskSeed);
+    const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode, taskSeed, TASK_GENERATOR_VERSION);
     const rows = tasks.map((t, i) => ({
       world_id: world.id,
       index: i,
@@ -485,6 +485,10 @@ async function runAgentStep(
         finished_at: new Date().toISOString(),
       })
       .eq("id", agent.id);
+    // An errored interdependent agent excludes its world, exactly like an invalidated one.
+    if (((agent.task ?? {}) as { interdependency?: { group_id?: string | null } }).interdependency?.group_id) {
+      await supabase.from("worlds").update({ invalidated: true } as never).eq("id", world.id);
+    }
     return;
   }
 
@@ -550,6 +554,7 @@ async function runAgentStep(
   let severity: number | null = null;
   let label: string | null = null;
   let note: string | null = null;
+  let monitorUsage: ChatUsage | null = null;
   try {
     const res = await chatDetailed({
       model: MONITOR_MODEL_ID,
@@ -560,6 +565,7 @@ async function runAgentStep(
       reasoningEffort: cfg.monitorReasoningEffort,
     });
     usages.push(res.usage);
+    monitorUsage = res.usage;
     const parsed = extractJson<{ severity?: number; label?: string; note?: string }>(res.text);
     if (parsed) {
       const s = Number(parsed.severity);
@@ -597,6 +603,10 @@ async function runAgentStep(
       tokens_in: tokens.tokens_in,
       tokens_out: tokens.tokens_out,
       tokens_reasoning: tokens.tokens_reasoning,
+      monitor_tokens_in: monitorUsage?.tokens_in ?? null,
+      monitor_tokens_out: monitorUsage?.tokens_out ?? null,
+      awareness_tokens_in: aware.usage?.tokens_in ?? null,
+      awareness_tokens_out: aware.usage?.tokens_out ?? null,
       awareness_label: aware.label,
       awareness_quote: aware.quote,
       finish_reason: finishReason,
