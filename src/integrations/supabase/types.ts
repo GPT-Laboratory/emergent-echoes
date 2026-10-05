@@ -317,6 +317,8 @@ export type Database = {
           agent_id: string
           awareness_label: string | null
           awareness_quote: string | null
+          awareness_tokens_in: number | null
+          awareness_tokens_out: number | null
           created_at: string
           cross_agent_read: boolean
           finish_reason: string | null
@@ -327,6 +329,8 @@ export type Database = {
           monitor_label: string | null
           monitor_note: string | null
           monitor_severity: number | null
+          monitor_tokens_in: number | null
+          monitor_tokens_out: number | null
           observation: string | null
           raw_output: string | null
           reasoning: string | null
@@ -342,6 +346,8 @@ export type Database = {
           agent_id: string
           awareness_label?: string | null
           awareness_quote?: string | null
+          awareness_tokens_in?: number | null
+          awareness_tokens_out?: number | null
           created_at?: string
           cross_agent_read?: boolean
           finish_reason?: string | null
@@ -352,6 +358,8 @@ export type Database = {
           monitor_label?: string | null
           monitor_note?: string | null
           monitor_severity?: number | null
+          monitor_tokens_in?: number | null
+          monitor_tokens_out?: number | null
           observation?: string | null
           raw_output?: string | null
           reasoning?: string | null
@@ -367,6 +375,8 @@ export type Database = {
           agent_id?: string
           awareness_label?: string | null
           awareness_quote?: string | null
+          awareness_tokens_in?: number | null
+          awareness_tokens_out?: number | null
           created_at?: string
           cross_agent_read?: boolean
           finish_reason?: string | null
@@ -377,6 +387,8 @@ export type Database = {
           monitor_label?: string | null
           monitor_note?: string | null
           monitor_severity?: number | null
+          monitor_tokens_in?: number | null
+          monitor_tokens_out?: number | null
           observation?: string | null
           raw_output?: string | null
           reasoning?: string | null

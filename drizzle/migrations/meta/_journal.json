@@ -8,6 +8,13 @@
       "when": 1791197866566,
       "tag": "0000_instrument_v2_invalid_steps",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791203006242,
+      "tag": "0001_step_monitor_awareness_tokens",
+      "breakpoints": true
     }
   ]
 }
