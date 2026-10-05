@@ -49,7 +49,7 @@ import {
   monitorUserMessage,
 } from "./prompt-spec";
 import { estimateCostUsd, sumTokens, type TokenTotals } from "./pricing";
-import { bootstrapCi, cohenKappa, weightedKappa, type Interval } from "./stats";
+import { bootstrapCi, cohenKappa, confusionMatrix, weightedKappa, type Interval } from "./stats";
 import { generateWorldTasks, TASK_GENERATOR_VERSION, type AgentTask } from "./tasks";
 
 /**
