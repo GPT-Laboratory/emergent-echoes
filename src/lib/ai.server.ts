@@ -87,7 +87,7 @@ async function chatAnthropic(opts: {
   const build = (withEffort: boolean) =>
     JSON.stringify({
       model: apiModel,
-      max_tokens: Math.max(opts.maxTokens, 4096),
+      max_tokens: opts.maxTokens,
       ...(withEffort ? { output_config: { effort: opts.effort } } : {}),
       ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       system: opts.system,
@@ -128,9 +128,13 @@ async function chatAnthropic(opts: {
 
   const data = (await res.json()) as {
     content?: Array<{ type?: string; text?: string }>;
+    stop_reason?: string | null;
     usage?: { input_tokens?: number; output_tokens?: number };
   };
+  const rawStop = data.stop_reason ?? null;
   return {
+    finish_reason: normaliseFinish(rawStop),
+    finish_reason_raw: rawStop,
     text: (data.content ?? [])
       .filter((b) => b?.type === "text" && typeof b.text === "string")
       .map((b) => b.text)
@@ -146,7 +150,23 @@ async function chatAnthropic(opts: {
 
 /** Token usage as the provider reported it; null means "not returned". */
 export type ChatUsage = { tokens_in: number | null; tokens_out: number | null; tokens_reasoning: number | null };
-export type ChatResult = { text: string; usage: ChatUsage };
+export type FinishReason = "stop" | "length" | "other";
+export type ChatResult = {
+  text: string;
+  usage: ChatUsage;
+  /** Normalised across providers. */
+  finish_reason: FinishReason;
+  /** The provider's own value, verbatim (null when not returned). */
+  finish_reason_raw: string | null;
+};
+
+/** stop/end_turn/STOP → "stop"; length/max_tokens/MAX_TOKENS → "length"; anything else → "other". */
+export function normaliseFinish(raw: string | null | undefined): FinishReason {
+  const v = String(raw ?? "").toLowerCase();
+  if (v === "stop" || v === "end_turn" || v === "stop_sequence") return "stop";
+  if (v === "length" || v === "max_tokens" || v === "max_output_tokens") return "length";
+  return "other";
+}
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -164,7 +184,8 @@ export async function chatDetailed(opts: {
   /** Locked per experiment; identical on every step. Never left to the gateway. */
   reasoningEffort?: ReasoningEffort;
 }): Promise<ChatResult> {
-  const limit = opts.maxTokens ?? 700;
+  // One uniform ceiling per call site, sent as-is on every provider (no floors).
+  const limit = opts.maxTokens ?? 1024;
   const canSetTemperature = temperatureSupported(opts.model) && opts.temperature != null;
 
   // Effort is an experimental factor: send it explicitly on every call so the
@@ -199,7 +220,7 @@ export async function chatDetailed(opts: {
     ],
     ...(canSetTemperature ? { temperature: opts.temperature } : {}),
     ...(isOpenAiReasoning
-      ? { max_completion_tokens: Math.max(limit, 2000), reasoning_effort: effort }
+      ? { max_completion_tokens: limit, reasoning_effort: effort }
       : { max_tokens: limit }),
     // Non-OpenAI models route through OpenRouter, which takes `reasoning`.
     ...(sendsEffort && !isOpenAiReasoning ? { reasoning: { effort } } : {}),
@@ -223,14 +244,17 @@ export async function chatDetailed(opts: {
   }
 
   const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string }; finish_reason?: string | null; native_finish_reason?: string | null }>;
     usage?: {
       prompt_tokens?: number;
       completion_tokens?: number;
       completion_tokens_details?: { reasoning_tokens?: number };
     };
   };
+  const rawFinish = data.choices?.[0]?.native_finish_reason ?? data.choices?.[0]?.finish_reason ?? null;
   return {
+    finish_reason: normaliseFinish(data.choices?.[0]?.finish_reason ?? rawFinish),
+    finish_reason_raw: rawFinish,
     text: data.choices?.[0]?.message?.content ?? "",
     usage: {
       tokens_in: num(data.usage?.prompt_tokens),
