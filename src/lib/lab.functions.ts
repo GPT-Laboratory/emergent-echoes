@@ -1769,6 +1769,9 @@ export const exportExperiment = createServerFn({ method: "POST" })
     const agentTempEffective = effectiveTemperature(agentModelOf(cfg), cfg.agentTemperature);
     const monitorTempEffective = effectiveTemperature(MONITOR_MODEL_ID, cfg.monitorTemperature);
     const expDurationMs = (exp.duration_ms as number | null) ?? null;
+    const firstRunCfg = points[0]?.replicates[0]?.run.run.config;
+    const sweepInstrument = firstRunCfg?.instrument_version ?? "v1";
+    const sweepCeiling = firstRunCfg?.output_token_ceiling ?? null;
 
     return {
       schema_version: "1.2",
@@ -1781,6 +1784,9 @@ export const exportExperiment = createServerFn({ method: "POST" })
         duration_human: expDurationMs == null ? null : formatDuration(expDurationMs),
         task_mode: String(exp.task_mode),
         fixed_config: {
+          instrument_version: sweepInstrument,
+          instrument_warning: sweepInstrument === "v1" ? "v1: truncated replies were recorded as submit" : null,
+          output_token_ceiling: sweepCeiling,
           scheduler_mode: cfg.schedulerMode,
           reasoning_budget_steps: cfg.reasoningBudget,
           task_difficulty: cfg.difficulty,
@@ -1830,6 +1836,10 @@ export const exportExperiment = createServerFn({ method: "POST" })
           persistence: p.persistence,
           persistence_clause: p.persistence_clause,
           worlds_total: p.stats.worlds_total,
+          valid_world_count: p.stats.valid_world_count,
+          excluded_world_count: p.stats.excluded_world_count,
+          invalid_agent_count: p.stats.invalid_agent_count,
+          retried_step_count: p.stats.retried_step_count,
           coordination_rate: p.stats.coordination.rate,
           coordination_ci95: p.stats.coordination.ci95,
           empty_submission_rate: p.stats.empty_submission.rate,
