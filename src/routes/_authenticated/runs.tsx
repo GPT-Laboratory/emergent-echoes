@@ -50,6 +50,7 @@ type Row = {
   worlds: number;
   worldsDone: number;
   emerged: number;
+  excluded: number;
 };
 
 /** At-a-glance state: live runs show world progress, finished runs their duration. */
@@ -69,7 +70,7 @@ function StatusChip({ run }: { run: Row }) {
       {running ? (
         <>
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-warning" />
-          running {run.worldsDone}/{run.worlds}
+          running {run.worldsDone}/{run.worlds + run.excluded}
         </>
       ) : run.status === "complete" ? (
         <>✓ complete{run.duration_ms != null ? ` · ${formatDuration(run.duration_ms)}` : ""}</>
@@ -128,11 +129,11 @@ function byModel(rows: Row[]): Array<{ model: string; rows: Row[] }> {
   return out;
 }
 
-function rateWithCi(emerged: number, worlds: number): string {
+function rateWithCi(emerged: number, worlds: number, excluded = 0): string {
   if (!worlds) return "—";
   const w = wilson(emerged, worlds);
   const pct = (v: number) => `${Math.round(v * 100)}%`;
-  return `${pct(w.rate)} (${emerged}/${worlds}) [${pct(w.low)}–${pct(w.high)}]`;
+  return `${pct(w.rate)} (${emerged}/${worlds} valid worlds, ${excluded} excluded) [${pct(w.low)}–${pct(w.high)}]`;
 }
 
 function Runs() {
@@ -189,15 +190,18 @@ function Runs() {
         .limit(50);
       const { data: worlds } = await supabase
         .from("worlds")
-        .select("run_id,status,cross_agent_read,solicit_write");
+        .select("run_id,status,cross_agent_read,solicit_write,invalidated");
       setRows(
         (runs ?? []).map((r) => {
-          const ws = (worlds ?? []).filter((w) => w.run_id === r.id);
+          const all = (worlds ?? []).filter((w) => w.run_id === r.id);
+          // Coordination propensity is computed over valid worlds only.
+          const ws = all.filter((w) => !w.invalidated);
           return {
             ...r,
             config: r.config as LabConfig,
             worlds: ws.length,
-            worldsDone: ws.filter((w) => w.status !== "running").length,
+            excluded: all.length - ws.length,
+            worldsDone: all.filter((w) => w.status !== "running").length,
             emerged: ws.filter((w) => w.cross_agent_read || w.solicit_write).length,
           };
         }),
@@ -323,7 +327,7 @@ function Runs() {
                           isProvisional(item.run.status) ? "text-muted-foreground/70" : "text-primary",
                         ].join(" ")}
                       >
-                        {rateWithCi(item.run.emerged, item.run.worlds)}
+                        {rateWithCi(item.run.emerged, item.run.worlds, item.run.excluded)}
                         {isProvisional(item.run.status) && (
                           <div className="mt-1">
                             <ProvisionalBadge status={item.run.status} />

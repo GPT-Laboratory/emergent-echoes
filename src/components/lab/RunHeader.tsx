@@ -43,9 +43,41 @@ export function CompleteBadge() {
   );
 }
 
+/** Runs without a stored instrument version predate v2. */
+export function instrumentVersionOfConfig(config: unknown): "v1" | "v2" {
+  return ((config ?? {}) as { instrumentVersion?: string }).instrumentVersion === "v2" ? "v2" : "v1";
+}
+
+export function InstrumentBadge({ config }: { config: unknown }) {
+  const v = instrumentVersionOfConfig(config);
+  if (v === "v2") {
+    return (
+      <span className="rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+        v2
+      </span>
+    );
+  }
+  return (
+    <span
+      title="Instrument v1: truncated or unparsable model replies were recorded as an empty submit."
+      className="rounded-sm border border-warning/50 bg-warning/10 px-1.5 py-0.5 font-mono text-[10px] tracking-wide text-warning"
+    >
+      v1: truncated replies were recorded as submit
+    </span>
+  );
+}
+
+/** "31/44 valid worlds (6 excluded)" — coordination over valid worlds only. */
+export function validWorldsLabel(crossed: number, valid: number, excluded: number) {
+  return `${crossed}/${valid} valid worlds (${excluded} excluded)`;
+}
+
 export type RunProgress = {
   done: number;
   total: number;
+  valid: number;
+  excluded: number;
+  crossed: number;
   etaMs: number | null;
   point: { index: number; total: number; sweepValue: number | null } | null;
 };
@@ -56,7 +88,7 @@ export type RunProgress = {
  * per elapsed second, extrapolated over the worlds still running.
  */
 export function useRunProgress(runId: string | null | undefined, run?: RunRow | null): RunProgress | null {
-  const [counts, setCounts] = useState<{ done: number; total: number } | null>(null);
+  const [counts, setCounts] = useState<{ done: number; total: number; valid: number; excluded: number; crossed: number } | null>(null);
   const [point, setPoint] = useState<RunProgress["point"]>(null);
   const [, setTick] = useState(0);
 
@@ -71,11 +103,15 @@ export function useRunProgress(runId: string | null | undefined, run?: RunRow | 
     }
     let cancelled = false;
     const load = async () => {
-      const { data } = await supabase.from("worlds").select("id,status").eq("run_id", runId);
+      const { data } = await supabase.from("worlds").select("id,status,cross_agent_read,invalidated").eq("run_id", runId);
       if (cancelled || !data) return;
+      const valid = data.filter((w) => !w.invalidated);
       setCounts({
         done: data.filter((w) => w.status !== "running").length,
         total: data.length,
+        valid: valid.length,
+        excluded: data.length - valid.length,
+        crossed: valid.filter((w) => w.cross_agent_read).length,
       });
     };
     void load();
@@ -131,7 +167,7 @@ export function useRunProgress(runId: string | null | undefined, run?: RunRow | 
     etaMs = Math.max(0, perWorld * (counts.total - counts.done));
   }
 
-  return { done: counts.done, total: counts.total, etaMs, point };
+  return { ...counts, etaMs, point };
 }
 
 export function ProgressBar({ progress, status }: { progress: RunProgress; status: string | null | undefined }) {
@@ -260,6 +296,7 @@ export function RunHeader({
     `started ${started ? new Date(started).toLocaleString() : "—"}`,
     `duration ${durationMs != null ? formatDuration(durationMs) : "—"}`,
     `base seed ${cfg.baseSeed ?? "—"}`,
+    ...(progress ? [`coordination ${validWorldsLabel(progress.crossed, progress.valid, progress.excluded)}`] : []),
   ].join(" · ");
 
   return (
@@ -267,6 +304,7 @@ export function RunHeader({
       <p className="font-mono text-[11px] leading-relaxed text-foreground">{line1}</p>
       <p className="flex flex-wrap items-center gap-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
         {row.status === "complete" ? <CompleteBadge /> : <span>{row.status}</span>}
+        <InstrumentBadge config={row.config} />
         <span>{line2}</span>
       </p>
       <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">
