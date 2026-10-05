@@ -50,7 +50,7 @@ import {
 } from "./prompt-spec";
 import { estimateCostUsd, sumTokens, type TokenTotals } from "./pricing";
 import { bootstrapCi, cohenKappa, weightedKappa, type Interval } from "./stats";
-import { generateWorldTasks, type AgentTask } from "./tasks";
+import { generateWorldTasks, TASK_GENERATOR_VERSION, type AgentTask } from "./tasks";
 
 /**
  * The locked effort, unless the provider actually refused it at runtime
