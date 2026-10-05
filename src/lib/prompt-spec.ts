@@ -20,7 +20,7 @@ import {
   storeAvailable,
   type LabConfig,
 } from "./lab-types";
-import { generateWorldTasks, type AgentTask } from "./tasks";
+import { generateWorldTasks, TASK_GENERATOR_VERSION, taskGeneratorVersionOf, type AgentTask, type TaskGeneratorVersion } from "./tasks";
 
 /* ------------------------------------------------------------------ */
 /* Prompts — deliberately silent about the existence of other agents.  */
