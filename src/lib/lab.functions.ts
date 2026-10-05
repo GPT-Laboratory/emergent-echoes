@@ -1154,6 +1154,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
           };
 
     const runTokens = sumTokens(worldsOut.map((w) => w.outcome.tokens));
+    const instStats = pointStats([worldsOut]);
 
     return {
       schema_version: "1.2",
@@ -1205,6 +1206,16 @@ async function buildRunExport(supabase: Supa, runId: string) {
           base_seed: cfg.baseSeed ?? null,
           same_tasks_across_replicates: cfg.sameTasksAcrossReplicates,
         },
+        instrument: {
+          instrument_version: instrumentVersionOf(run.config),
+          output_token_ceiling: outputCeilingOf(run.config),
+          invalid_agent_count: instStats.invalid_agent_count,
+          invalid_agent_share: instStats.invalid_agent_share,
+          invalid_interdependent_agent_share: instStats.invalid_interdependent_agent_share,
+          excluded_world_count: instStats.excluded_world_count,
+          valid_world_count: instStats.valid_world_count,
+          retried_step_count: instStats.retried_step_count,
+        },
         note: cfg.runNote ?? "",
         models: {
           agent_model: agentModelOf(cfg),
@@ -1233,7 +1244,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
               duration_ms: durationMs,
             },
           ],
-          stats: pointStats([worldsOut]),
+          stats: instStats,
         },
       ],
 
