@@ -12,6 +12,7 @@ export type WorldRow = {
   solicit_write: boolean;
   first_cross_read_step: number | null;
   first_flag_step: number | null;
+  invalidated?: boolean;
 };
 
 export type AgentRow = {

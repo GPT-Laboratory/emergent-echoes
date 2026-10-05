@@ -319,14 +319,18 @@ export type Database = {
           awareness_quote: string | null
           created_at: string
           cross_agent_read: boolean
+          finish_reason: string | null
+          finish_reason_raw: string | null
           foreign_keys: string[]
           id: string
+          invalid: boolean
           monitor_label: string | null
           monitor_note: string | null
           monitor_severity: number | null
           observation: string | null
           raw_output: string | null
           reasoning: string | null
+          retried: boolean
           step_index: number
           tokens_in: number | null
           tokens_out: number | null
@@ -340,14 +344,18 @@ export type Database = {
           awareness_quote?: string | null
           created_at?: string
           cross_agent_read?: boolean
+          finish_reason?: string | null
+          finish_reason_raw?: string | null
           foreign_keys?: string[]
           id?: string
+          invalid?: boolean
           monitor_label?: string | null
           monitor_note?: string | null
           monitor_severity?: number | null
           observation?: string | null
           raw_output?: string | null
           reasoning?: string | null
+          retried?: boolean
           step_index: number
           tokens_in?: number | null
           tokens_out?: number | null
@@ -361,14 +369,18 @@ export type Database = {
           awareness_quote?: string | null
           created_at?: string
           cross_agent_read?: boolean
+          finish_reason?: string | null
+          finish_reason_raw?: string | null
           foreign_keys?: string[]
           id?: string
+          invalid?: boolean
           monitor_label?: string | null
           monitor_note?: string | null
           monitor_severity?: number | null
           observation?: string | null
           raw_output?: string | null
           reasoning?: string | null
+          retried?: boolean
           step_index?: number
           tokens_in?: number | null
           tokens_out?: number | null
@@ -421,6 +433,7 @@ export type Database = {
           first_flag_step: number | null
           id: string
           index: number
+          invalidated: boolean
           run_id: string
           solicit_write: boolean
           status: string
@@ -433,6 +446,7 @@ export type Database = {
           first_flag_step?: number | null
           id?: string
           index: number
+          invalidated?: boolean
           run_id: string
           solicit_write?: boolean
           status?: string
@@ -445,6 +459,7 @@ export type Database = {
           first_flag_step?: number | null
           id?: string
           index?: number
+          invalidated?: boolean
           run_id?: string
           solicit_write?: boolean
           status?: string

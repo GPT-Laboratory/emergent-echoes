@@ -315,7 +315,12 @@ export function LabView({ runId }: { runId: string | null }) {
     };
   }, [runId, worlds]);
 
+  const runWorlds = worlds;
   const stats = useMemo(() => {
+    // Propensities are computed over valid worlds only (instrument v2).
+    const validWorlds = runWorlds.filter((w) => !w.invalidated);
+    const excluded = runWorlds.length - validWorlds.length;
+    const worlds = validWorlds;
     const n = worlds.length || 1;
     const crossed = worlds.filter((w) => w.cross_agent_read);
     const exposed = worlds.filter((w) => exposedWorldIds.has(w.id));
@@ -345,6 +350,7 @@ export function LabView({ runId }: { runId: string | null }) {
     const flaggedFirst = worlds.map((w) => w.first_flag_step).filter((v): v is number => v != null);
     const w95 = wilson(crossed.length, worlds.length);
     return {
+      validLabel: `${crossed.length}/${worlds.length} valid worlds (${excluded} excluded)`,
       crossRate: Math.round((crossed.length / n) * 100),
       exposureRate: Math.round((exposed.length / n) * 100),
       exposureCi: worlds.length ? `${Math.round(wExp.low * 100)}–${Math.round(wExp.high * 100)}%` : "—",
@@ -357,15 +363,15 @@ export function LabView({ runId }: { runId: string | null }) {
       ceilingRate: pct(ceilingAgents, runAgents.length),
       correctRate: pct(correctAgents, interAgents.length),
     };
-  }, [worlds, exposedWorldIds, steps, runAgents, config.reasoningBudget]);
+  }, [runWorlds, exposedWorldIds, steps, runAgents, config.reasoningBudget]);
 
   /* ---- sweep across every recorded run, bucketed by the chosen knob ---- */
   const loadSweep = useCallback(async () => {
     const { data: runs } = await supabase.from("runs").select("id,config");
-    const { data: allWorlds } = await supabase.from("worlds").select("run_id,cross_agent_read,solicit_write");
+    const { data: allWorlds } = await supabase.from("worlds").select("run_id,cross_agent_read,solicit_write,invalidated");
     if (!runs || !allWorlds) return;
     const cfgByRun = new Map(runs.map((r) => [r.id, r.config as Partial<LabConfig>]));
-    const buckets = new Map<string, { emerged: number; total: number; sort: number }>();
+    const buckets = new Map<string, { emerged: number; total: number; excluded: number; sort: number }>();
     for (const w of allWorlds) {
       const cfg = cfgByRun.get(w.run_id);
       if (!cfg) continue;
@@ -379,7 +385,12 @@ export function LabView({ runId }: { runId: string | null }) {
         sort = Math.round(raw * 10) / 10;
         key = `${Math.round(sort * 100)}%`;
       }
-      const b = buckets.get(key) ?? { emerged: 0, total: 0, sort };
+      const b = buckets.get(key) ?? { emerged: 0, total: 0, excluded: 0, sort };
+      if (w.invalidated) {
+        b.excluded += 1;
+        buckets.set(key, b);
+        continue;
+      }
       b.total += 1;
       if (w.cross_agent_read || w.solicit_write) b.emerged += 1;
       buckets.set(key, b);
@@ -390,7 +401,9 @@ export function LabView({ runId }: { runId: string | null }) {
         .map(([bucket, b]) => ({
           bucket,
           worlds: b.total,
-          emergenceRate: Math.round((b.emerged / b.total) * 100),
+          excluded: b.excluded,
+          emerged: b.emerged,
+          emergenceRate: b.total ? Math.round((b.emerged / b.total) * 100) : 0,
         })),
     );
   }, [sweepKnob]);
@@ -749,7 +762,7 @@ export function LabView({ runId }: { runId: string | null }) {
             )}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Stat
-                label="Cross-agent read emerged"
+                label={`Cross-agent read emerged · ${stats.validLabel}`}
                 value={`${stats.crossRate}%`}
                 tone="primary"
                 provisional={provisional}

@@ -16,6 +16,10 @@ export type DosePoint = {
   empty_submission_rate: number;
   /** 95% Wilson interval as [below, above] offsets from the rate. */
   coordination_err?: [number, number];
+  /** Valid worlds in the denominator and worlds excluded as invalidated. */
+  worlds?: number;
+  excluded?: number;
+  crossed?: number;
 };
 
 export function DoseResponseChart({ data }: { data: DosePoint[] }) {
@@ -61,7 +65,13 @@ export function DoseResponseChart({ data }: { data: DosePoint[] }) {
               fontSize: 12,
               color: "var(--popover-foreground)",
             }}
-            formatter={(v: number, n) => [v.toFixed(2), String(n)]}
+            formatter={(v: number, n, item) => {
+              const p = item?.payload as DosePoint | undefined;
+              if (n === "coordination rate" && p?.worlds != null) {
+                return [`${v.toFixed(2)} · ${p.crossed ?? 0}/${p.worlds} valid worlds (${p.excluded ?? 0} excluded)`, String(n)];
+              }
+              return [v.toFixed(2), String(n)];
+            }}
           />
           <Legend wrapperStyle={{ fontSize: 11, fontFamily: "var(--font-mono)" }} />
           <Line
