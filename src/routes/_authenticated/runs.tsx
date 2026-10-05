@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Fragment, useEffect, useState } from "react";
 
-import { isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
+import { InstrumentBadge, isProvisional, ProvisionalBadge, RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { Button } from "@/components/ui/button";
 import {
   downloadPromptsAppendix,
@@ -307,6 +307,9 @@ function Runs() {
                         </button>
                         {new Date(item.run.created_at).toLocaleString()}
                         <StatusChip run={item.run} />
+                        <span className="ml-2">
+                          <InstrumentBadge config={item.run.config} />
+                        </span>
                       </td>
                       <td className="px-3 py-2 font-mono">
                         {new Date(item.run.started_at ?? item.run.created_at).toLocaleString()}

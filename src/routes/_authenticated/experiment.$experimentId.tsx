@@ -98,7 +98,7 @@ function ExperimentDetail() {
         .order("sweep_value");
       const runIds = (runs ?? []).map((r) => r.id);
       const { data: worlds } = runIds.length
-        ? await supabase.from("worlds").select("id,run_id,cross_agent_read,status").in("run_id", runIds)
+        ? await supabase.from("worlds").select("id,run_id,cross_agent_read,status,invalidated").in("run_id", runIds)
         : { data: [] };
       const worldIds = (worlds ?? []).map((w) => w.id);
       const { data: agents } = worldIds.length
@@ -133,7 +133,9 @@ function ExperimentDetail() {
               (a, b) => Number(a.replicate_index ?? 0) - Number(b.replicate_index ?? 0),
             );
             const replicates: Replicate[] = list.map((r) => {
-              const ws = (worlds ?? []).filter((w) => w.run_id === r.id);
+              const allWs = (worlds ?? []).filter((w) => w.run_id === r.id);
+              // Propensity over valid worlds only.
+              const ws = allWs.filter((w) => !w.invalidated);
               const crossed = ws.filter((w) => w.cross_agent_read).length;
               return {
                 runId: r.id as string,
@@ -141,6 +143,7 @@ function ExperimentDetail() {
                 replicateSeed: (r.replicate_seed as number | null) ?? null,
                 status: r.status as string,
                 worlds: ws.length,
+                excluded: allWs.length - ws.length,
                 crossed,
                 rate: ws.length ? crossed / ws.length : 0,
               };
@@ -148,6 +151,7 @@ function ExperimentDetail() {
 
             const worldsTotal = replicates.reduce((a, r) => a + r.worlds, 0);
             const crossedTotal = replicates.reduce((a, r) => a + r.crossed, 0);
+            const excludedTotal = replicates.reduce((a, r) => a + r.excluded, 0);
             const ci = wilson(crossedTotal, worldsTotal);
 
             const runIdSet = new Set(list.map((r) => r.id as string));
@@ -162,6 +166,7 @@ function ExperimentDetail() {
             return {
               persistence,
               worlds: worldsTotal,
+              excluded: excludedTotal,
               crossed: crossedTotal,
               coordination_rate: ci.rate,
               low: ci.low,
@@ -282,7 +287,7 @@ function ExperimentDetail() {
                   <td className="px-3 py-2 font-mono">{p.replicates.length}</td>
                   <td className="px-3 py-2 font-mono">{p.worlds}</td>
                   <td className="px-3 py-2 font-mono text-primary">
-                    {p.crossed}/{p.worlds}
+                    {p.crossed}/{p.worlds} valid worlds ({p.excluded} excluded)
                     <span className="ml-1 text-muted-foreground">
                       [{p.low.toFixed(2)}–{p.high.toFixed(2)}]
                     </span>
@@ -304,7 +309,7 @@ function ExperimentDetail() {
                       <td className="px-3 py-1.5 font-mono text-muted-foreground">seed {r.replicateSeed ?? "—"}</td>
                       <td className="px-3 py-1.5 font-mono">{r.worlds}</td>
                       <td className="px-3 py-1.5 font-mono">
-                        {r.crossed}/{r.worlds} ({Math.round(r.rate * 100)}%)
+                        {r.crossed}/{r.worlds} valid worlds ({r.excluded} excluded) ({Math.round(r.rate * 100)}%)
                       </td>
                       <td className="px-3 py-1.5 font-mono text-muted-foreground">{r.status}</td>
                       <td className="px-3 py-1.5 text-right">
