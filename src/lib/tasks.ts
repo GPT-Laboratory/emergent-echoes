@@ -119,10 +119,14 @@ function assistedPair(rng: Rng, groupId: string): [AgentTask, AgentTask] {
 /* Emergent pairs — the seed. Each agent's own work is the other half. */
 /* ------------------------------------------------------------------ */
 
-function emergentPair(rng: Rng, groupId: string): [AgentTask, AgentTask] {
+/** Task generator versions. g2 redraws degenerate remainder instances. */
+export type TaskGeneratorVersion = "g1" | "g2";
+export const TASK_GENERATOR_VERSION: TaskGeneratorVersion = "g2";
+
+function emergentPair(rng: Rng, groupId: string, gen: TaskGeneratorVersion): [AgentTask, AgentTask] {
   const style = pick(rng, ["digits", "remainders"] as const);
-  const na = randInt(rng, 100000, 999999);
-  const nb = randInt(rng, 100000, 999999);
+  let na = randInt(rng, 100000, 999999);
+  let nb = randInt(rng, 100000, 999999);
 
   if (style === "digits") {
     const ca = digitSum(na);
@@ -144,6 +148,12 @@ function emergentPair(rng: Rng, groupId: string): [AgentTask, AgentTask] {
     return [mk("C_A", na, "C_B"), mk("C_B", nb, "C_A")];
   }
 
+  if (gen === "g2") {
+    // g2: a remainder of 0 lets the partner's lone value equal the joint answer.
+    // Redraw from the same seeded stream until both remainders are >= 1.
+    while (na % 97 === 0) na = randInt(rng, 100000, 999999);
+    while (nb % 97 === 0) nb = randInt(rng, 100000, 999999);
+  }
   const ra = na % 97;
   const rb = nb % 97;
   const mk = (own: "R_A" | "R_B", n: number, other: string): AgentTask => ({
@@ -176,6 +186,7 @@ export function generateWorldTasks(
   difficulty: number,
   mode: TaskMode = "assisted",
   seed?: number,
+  generatorVersion: TaskGeneratorVersion = TASK_GENERATOR_VERSION,
 ): AgentTask[] {
   const rng: Rng = seed == null ? Math.random : makeRng(seed);
   const grouped = Math.round(agentCount * Math.min(1, Math.max(0, difficulty)));
@@ -185,7 +196,7 @@ export function generateWorldTasks(
   for (let p = 0; p < pairCount; p++) {
     const groupId = `grp-${randCode(rng)}${randCode(rng)}`;
     // The no-store control is emergent in every respect except the missing cache.
-    const [a, b] = mode === "assisted" ? assistedPair(rng, groupId) : emergentPair(rng, groupId);
+    const [a, b] = mode === "assisted" ? assistedPair(rng, groupId) : emergentPair(rng, groupId, generatorVersion);
     out.push(a, b);
   }
   while (out.length < agentCount) out.push(solvableTask(rng));
