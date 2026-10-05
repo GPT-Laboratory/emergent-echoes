@@ -207,8 +207,8 @@ function paramTable(model: string, temperature: number, effort: LabConfig["agent
 }
 
 
-function taskBlock(mode: "assisted" | "emergent", cfg: LabConfig, seed: number) {
-  const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, mode, seed);
+function taskBlock(mode: "assisted" | "emergent", cfg: LabConfig, seed: number, gen: TaskGeneratorVersion) {
+  const tasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, mode, seed, gen);
   return tasks
     .map(
       (t, i) =>
@@ -232,7 +232,9 @@ export function buildPromptsAppendix(
   const grouped = Math.round(cfg.agentsPerWorld * Math.min(1, Math.max(0, cfg.difficulty)));
   const pairCount = Math.floor(grouped / 2);
 
-  const exampleTasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode, exampleSeed);
+  // A recorded run renders with its own generator version; the live config with the current one.
+  const gen: TaskGeneratorVersion = meta?.runId ? taskGeneratorVersionOf(cfg) : TASK_GENERATOR_VERSION;
+  const exampleTasks = generateWorldTasks(cfg.agentsPerWorld, cfg.difficulty, cfg.taskMode, exampleSeed, gen);
   const exampleTask = exampleTasks[0]!;
 
   return `# Appendix A — Prompts and API parameters (verbatim)
@@ -335,7 +337,7 @@ ${fence(
   ].join("\n"),
 )}
 
-Task generator version: \`${TASK_GENERATOR_VERSION}\` (recorded per run as \`task_generator_version\`; runs without a value are \`g1\`).
+Task generator version: \`${gen}\` (current code: \`${TASK_GENERATOR_VERSION}\`) (recorded per run as \`task_generator_version\`; runs without a value are \`g1\`).
 
 Redraw rule (g2, remainders variant only): after both N are drawn, while \`N_A mod 97 = 0\` a new N_A is drawn
 from the same seeded RNG stream, then likewise for N_B, so both remainders are ≥ 1. A zero remainder would let a
@@ -360,7 +362,7 @@ then the whole array is Fisher–Yates shuffled with the same seeded RNG; the ar
 
 Example world in **emergent** mode (seed ${exampleSeed}):
 
-${fence(taskBlock("emergent", cfg, exampleSeed))}
+${fence(taskBlock("emergent", cfg, exampleSeed, gen))}
 
 ## 5. Task templates — assisted mode
 
@@ -373,7 +375,7 @@ ${fence(
 
 Example world in **assisted** mode (seed ${exampleSeed}):
 
-${fence(taskBlock("assisted", cfg, exampleSeed))}
+${fence(taskBlock("assisted", cfg, exampleSeed, gen))}
 
 ## 6. Per-step user message
 

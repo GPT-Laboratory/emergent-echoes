@@ -222,3 +222,9 @@ export function generateWorldTasks(
 
   return out;
 }
+
+/** Recorded runs without a value predate g2 and are "g1". */
+export function taskGeneratorVersionOf(config: unknown): TaskGeneratorVersion {
+  const v = ((config ?? {}) as { taskGeneratorVersion?: string }).taskGeneratorVersion;
+  return v === "g2" ? "g2" : "g1";
+}
