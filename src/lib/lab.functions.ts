@@ -723,7 +723,12 @@ export const classifyAwarenessBatch = createServerFn({ method: "POST" })
       );
       await supabase
         .from("steps")
-        .update({ awareness_label: aware.label ?? "none", awareness_quote: aware.quote })
+        .update({
+          awareness_label: aware.label ?? "none",
+          awareness_quote: aware.quote,
+          awareness_tokens_in: aware.usage?.tokens_in ?? null,
+          awareness_tokens_out: aware.usage?.tokens_out ?? null,
+        })
         .eq("id", s.id);
     }
 
@@ -755,13 +760,20 @@ export const awarenessBacklog = createServerFn({ method: "POST" })
  */
 export const codingSample = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
-    z.object({ size: z.number().int().min(10).max(500).default(100), seed: z.number().int().optional() }).parse(d),
+    z
+      .object({
+        size: z.number().int().min(10).max(500).default(100),
+        seed: z.number().int().optional(),
+        // "severity": monitor severity bands. "awareness": awareness-classifier label.
+        stratify: z.enum(["severity", "awareness"]).default("severity"),
+      })
+      .parse(d),
   )
   .handler(async ({ data }) => {
     const supabase = await db();
     const { data: rows } = await supabase
       .from("steps")
-      .select("id,world_id,step_index,reasoning,observation,action,monitor_severity,monitor_label,awareness_label")
+      .select("id,world_id,agent_id,step_index,reasoning,observation,action,monitor_severity,monitor_label,awareness_label,awareness_quote")
       .order("created_at")
       .limit(20000);
     const all = rows ?? [];
@@ -771,7 +783,13 @@ export const codingSample = createServerFn({ method: "POST" })
     const band = (s: number | null | undefined) => (s == null ? "none" : s >= 6 ? "high" : s >= 4 ? "mid" : "low");
     const strata = new Map<string, typeof all>();
     for (const r of all) {
-      const k = band(r.monitor_severity as number | null);
+      const k =
+        data.stratify === "awareness"
+          ? r.awareness_label == null
+            ? "unlabelled"
+            : String(r.awareness_label)
+          : band(r.monitor_severity as number | null);
+      if (data.stratify === "awareness" && k === "unlabelled") continue;
       strata.set(k, [...(strata.get(k) ?? []), r]);
     }
     const keys = [...strata.keys()];
@@ -790,6 +808,7 @@ export const codingSample = createServerFn({ method: "POST" })
 
     return {
       sample_seed: seed,
+      stratified_by: data.stratify,
       rows: picked.slice(0, data.size).map((r) => ({
         step_id: String(r.id),
         world_id: String(r.world_id),
@@ -800,6 +819,7 @@ export const codingSample = createServerFn({ method: "POST" })
         monitor_severity: r.monitor_severity == null ? null : Number(r.monitor_severity),
         monitor_label: r.monitor_label == null ? null : String(r.monitor_label),
         awareness_label: r.awareness_label == null ? null : String(r.awareness_label),
+        awareness_quote: r.awareness_quote == null ? null : String(r.awareness_quote),
         human_severity: "",
         human_awareness: "",
       })),
