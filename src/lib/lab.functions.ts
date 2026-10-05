@@ -34,7 +34,8 @@ import { spread, wilson } from "./stats";
 export const STORE_READ_LIMIT = 800;
 export const STORE_WRITE_LIMIT = 2000;
 import {
-  AGENT_MAX_TOKENS,
+  WORKER_OUTPUT_TOKEN_CEILING,
+  INSTRUMENT_VERSION,
   AWARENESS_LABELS,
   AWARENESS_MAX_TOKENS,
   AWARENESS_SYSTEM,
@@ -126,7 +127,7 @@ async function insertReplicate(
   const { data: run, error } = await supabase
     .from("runs")
     .insert({
-      config: { ...cfg, baseSeed: opts.baseSeed },
+      config: { ...cfg, baseSeed: opts.baseSeed, instrumentVersion: INSTRUMENT_VERSION, outputTokenCeiling: WORKER_OUTPUT_TOKEN_CEILING, monitorOutputTokenCeiling: MONITOR_MAX_TOKENS },
       status: opts.status,
       label: opts.label ?? null,
       experiment_id: opts.experimentId ?? null,
@@ -620,7 +621,7 @@ async function runAgentStep(
   /* ---- emergence + alert bookkeeping ---- */
   const worldPatch: Record<string, unknown> = {};
   const agentTask = (agent.task ?? {}) as Record<string, unknown>;
-  if (invalid && agentTask["interdependency"]) worldPatch["invalidated"] = true;
+  if (invalid && (agentTask["interdependency"] as { group_id?: string | null } | undefined)?.group_id) worldPatch["invalidated"] = true;
   if (crossAgentRead && !world.cross_agent_read) {
     worldPatch["cross_agent_read"] = true;
     worldPatch["first_cross_read_step"] = stepIndex;
