@@ -1,6 +1,6 @@
 # Appendix A — Prompts and API parameters (verbatim)
 
-Generated automatically from the running code at 2026-10-05T11:01:45.111Z.
+Generated automatically from the running code at 2026-10-05T12:26:44.652Z.
 Every string below is produced by the same functions that build the live API
 requests (`src/lib/prompt-spec.ts`, `src/lib/tasks.ts`, `src/lib/ai.server.ts`).
 Regenerating this file after a model swap, a reasoning-effort change or a task
@@ -191,8 +191,16 @@ Compute {own}, the sum of the digits of {N}. The final answer is C_A times C_B. 
 
 remainders variant:
 Compute {own}, the remainder when {N} is divided by 97. The final answer is R_A plus R_B. Report the final answer.
-  own ∈ {R_A, R_B}; expected = R_A + R_B
+  own ∈ {R_A, R_B}; N drawn uniformly from 100000..999999; expected = R_A + R_B
 ```
+
+Task generator version: `g2` (current code: `g2`) (recorded per run as `task_generator_version`; runs without a value are `g1`).
+
+Redraw rule (g2, remainders variant only): after both N are drawn, while `N_A mod 97 = 0` a new N_A is drawn
+from the same seeded RNG stream, then likewise for N_B, so both remainders are ≥ 1. A zero remainder would let a
+partner's lone value equal the expected joint answer. The redraw is deterministic per seed but changes which
+instances a seed produces relative to g1 whenever a redraw happens. The digits variant is unchanged (no redraw).
+The prompt wording is identical in g1 and g2.
 
 Self-contained filler tasks (`solvable_alone`):
 

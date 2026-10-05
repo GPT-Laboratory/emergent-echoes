@@ -72,6 +72,8 @@ export function LabView({ runId }: { runId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [sweepKnob, setSweepKnob] = useState<SweepKnob>("difficulty");
   const [sweep, setSweep] = useState<SweepPoint[]>([]);
+  // Instrument versions are never pooled by default: v1 recorded truncated replies as submit.
+  const [includeV1, setIncludeV1] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [sweepPoints, setSweepPoints] = useState("0.2, 0.4, 0.6, 0.8, 1.0");
   const [classifying, setClassifying] = useState(false);
@@ -111,8 +113,8 @@ export function LabView({ runId }: { runId: string | null }) {
     }
   };
 
-  const downloadSample = async () => {
-    const res = await doSample({ data: { size: 100 } });
+  const downloadSample = async (stratify: "severity" | "awareness" = "severity") => {
+    const res = await doSample({ data: { size: 100, stratify } });
     const cols = [
       "step_id",
       "world_id",
@@ -121,6 +123,7 @@ export function LabView({ runId }: { runId: string | null }) {
       "monitor_severity",
       "monitor_label",
       "awareness_label",
+      "awareness_quote",
       "human_severity",
       "human_awareness",
       "reasoning",
@@ -135,7 +138,7 @@ export function LabView({ runId }: { runId: string | null }) {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `coding-sample_seed-${res.sample_seed}.csv`;
+    a.download = `coding-sample_${stratify}_seed-${res.sample_seed}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     setMeasureNote(`Sample of ${res.rows.length} steps downloaded · seed ${res.sample_seed}`);
@@ -370,7 +373,11 @@ export function LabView({ runId }: { runId: string | null }) {
     const { data: runs } = await supabase.from("runs").select("id,config");
     const { data: allWorlds } = await supabase.from("worlds").select("run_id,cross_agent_read,solicit_write,invalidated");
     if (!runs || !allWorlds) return;
-    const cfgByRun = new Map(runs.map((r) => [r.id, r.config as Partial<LabConfig>]));
+    const cfgByRun = new Map(
+      runs
+        .filter((r) => includeV1 || (r.config as { instrumentVersion?: string } | null)?.instrumentVersion === "v2")
+        .map((r) => [r.id, r.config as Partial<LabConfig>]),
+    );
     const buckets = new Map<string, { emerged: number; total: number; excluded: number; sort: number }>();
     for (const w of allWorlds) {
       const cfg = cfgByRun.get(w.run_id);
@@ -406,7 +413,7 @@ export function LabView({ runId }: { runId: string | null }) {
           emergenceRate: b.total ? Math.round((b.emerged / b.total) * 100) : 0,
         })),
     );
-  }, [sweepKnob]);
+  }, [sweepKnob, includeV1]);
 
   useEffect(() => {
     void loadSweep();
@@ -679,10 +686,18 @@ export function LabView({ runId }: { runId: string | null }) {
               <Button
                 variant="outline"
                 title="Stratified sample of stored steps as CSV for hand coding."
-                onClick={() => void downloadSample()}
+                onClick={() => void downloadSample("severity")}
                 className="font-mono text-xs uppercase tracking-widest"
               >
                 Coding sample CSV
+              </Button>
+              <Button
+                variant="outline"
+                title="Stratified by awareness-classifier label, for coding human_awareness."
+                onClick={() => void downloadSample("awareness")}
+                className="font-mono text-xs uppercase tracking-widest"
+              >
+                Awareness sample CSV
               </Button>
               <label className="inline-flex cursor-pointer items-center rounded-md border border-border px-3 py-2 font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground">
                 Import coding
@@ -790,6 +805,11 @@ export function LabView({ runId }: { runId: string | null }) {
                 provisional={provisional}
               />
               <Stat
+                label="Awareness · unvalidated"
+                value={`${stats.awareRate}%`}
+                provisional={provisional}
+              />
+              <Stat
                 label="Mean step of first monitor flag"
                 value={stats.meanFirstFlag == null ? "—" : stats.meanFirstFlag.toFixed(1)}
                 provisional={provisional}
@@ -802,7 +822,7 @@ export function LabView({ runId }: { runId: string | null }) {
               title="write: worlds where any agent wrote · exposure: a list() returned a foreign key · coord: a read() returned a foreign key · correct: interdependent submissions matching ground truth · ceiling: agents that used the whole step budget · aware: worlds where the classifier saw awareness of another agent"
             >
               funnel · write {stats.writeRate}% · exposure {stats.exposureRate}% · coord {stats.crossRate}% · correct{" "}
-              {stats.correctRate}% · ceiling {stats.ceilingRate}% · aware {stats.awareRate}%
+              {stats.correctRate}% · ceiling {stats.ceilingRate}% · aware {stats.awareRate}% (unvalidated)
             </div>
           </div>
 
@@ -824,9 +844,14 @@ export function LabView({ runId }: { runId: string | null }) {
                 ))}
               </div>
             </div>
+            <label className="mb-2 flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+              <input type="checkbox" checked={includeV1} onChange={(e) => setIncludeV1(e.target.checked)} />
+              include v1 runs (truncated replies recorded as submit)
+            </label>
             <PropensityChart data={sweep} knobLabel={`swept by ${sweepKnob}`} />
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Pooled across every recorded run, including runs where nothing emerged.
+              Pooled across {includeV1 ? "every recorded run (v1 and v2)" : "instrument v2 runs only"}, including runs where
+              nothing emerged.
             </p>
           </div>
 

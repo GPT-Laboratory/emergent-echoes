@@ -122,3 +122,19 @@ export function weightedKappa(pairs: ReadonlyArray<[number, number]>, min = 1, m
   const kappa = expected === 1 ? 1 : (observed - expected) / (1 - expected);
   return { kappa, n, observed, expected };
 }
+
+/**
+ * Confusion matrix for paired nominal labels: rows = first element (classifier),
+ * columns = second element (human). Categories in the given order, then any extras.
+ */
+export function confusionMatrix(pairs: ReadonlyArray<[string, string]>, order: ReadonlyArray<string> = []) {
+  const extras = [...new Set(pairs.flatMap(([a, b]) => [a, b]))].filter((c) => !order.includes(c));
+  const labels = [...order, ...extras];
+  const matrix: Record<string, Record<string, number>> = {};
+  for (const r of labels) {
+    matrix[r] = {};
+    for (const c of labels) matrix[r]![c] = 0;
+  }
+  for (const [a, b] of pairs) matrix[a]![b] = (matrix[a]![b] ?? 0) + 1;
+  return { rows: "classifier", columns: "human", labels, matrix };
+}
