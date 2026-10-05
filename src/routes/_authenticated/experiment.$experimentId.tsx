@@ -49,12 +49,14 @@ type Replicate = {
   replicateSeed: number | null;
   status: string;
   worlds: number;
+  excluded: number;
   crossed: number;
   rate: number;
 };
 
 type PointRow = DosePoint & {
   worlds: number;
+  excluded: number;
   crossed: number;
   low: number;
   high: number;

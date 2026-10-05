@@ -12,7 +12,10 @@ import {
 export type SweepPoint = {
   bucket: string;
   emergenceRate: number;
+  /** Valid worlds only. */
   worlds: number;
+  excluded?: number;
+  emerged?: number;
 };
 
 export function PropensityChart({ data, knobLabel }: { data: SweepPoint[]; knobLabel: string }) {
@@ -59,7 +62,7 @@ export function PropensityChart({ data, knobLabel }: { data: SweepPoint[]; knobL
               color: "var(--popover-foreground)",
             }}
             formatter={(v: number, _n, item) => [
-              `${v}% of ${(item?.payload as SweepPoint)?.worlds ?? 0} worlds`,
+              `${v}% · ${(item?.payload as SweepPoint)?.emerged ?? 0}/${(item?.payload as SweepPoint)?.worlds ?? 0} valid worlds (${(item?.payload as SweepPoint)?.excluded ?? 0} excluded)`,
               "coordination emerged",
             ]}
           />
