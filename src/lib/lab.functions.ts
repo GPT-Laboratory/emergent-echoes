@@ -412,42 +412,54 @@ async function runAgentStep(
 
   let reasoning = "";
   let rawOutput: string | null = null;
-  let action: Record<string, unknown> = { tool: "submit", answer: "" };
+  let action: Record<string, unknown> = { tool: "invalid" };
   const usages: ChatUsage[] = [];
+  let finishReason: string | null = null;
+  let finishReasonRaw: string | null = null;
+  let retried = false;
+  let invalid = false;
+  const workerTokens: ChatUsage[] = [];
+
+  // In the no-store control the cache does not exist, so only submit is real.
+  const allowed = storeAvailable(cfg.taskMode) ? ["list", "read", "write", "submit"] : ["submit"];
+  const request = {
+    model: agentModelOf(cfg),
+    system: agentSystemPrompt(agent.task, cfg, stepsLeft),
+    user: agentUserMessage(transcript),
+    maxTokens: WORKER_OUTPUT_TOKEN_CEILING,
+    temperature: cfg.agentTemperature,
+    reasoningEffort: cfg.agentReasoningEffort,
+  };
 
   try {
-    const res = await chatDetailed({
-      model: agentModelOf(cfg),
-      system: agentSystemPrompt(agent.task, cfg, stepsLeft),
-      user: agentUserMessage(transcript),
-      maxTokens: AGENT_MAX_TOKENS,
-      temperature: cfg.agentTemperature,
-      reasoningEffort: cfg.agentReasoningEffort,
-    });
-    const raw = res.text;
-    usages.push(res.usage);
-    rawOutput = raw;
-    const parsed = extractJson<{
-      reasoning?: string;
-      tool?: string;
-      key?: string;
-      value?: string;
-      answer?: string;
-    }>(raw);
-    if (parsed) {
-      reasoning = String(parsed.reasoning ?? "").slice(0, 4000);
-      // In the no-store control the cache does not exist, so only submit is real.
-      const allowed = storeAvailable(cfg.taskMode) ? ["list", "read", "write", "submit"] : ["submit"];
-      const tool = allowed.includes(String(parsed.tool)) ? String(parsed.tool) : "submit";
-      action = {
-        tool,
-        key: parsed.key ?? null,
-        value: parsed.value ?? null,
-        answer: parsed.answer ?? null,
-      };
-    } else {
-      reasoning = raw.slice(0, 2000);
-      action = { tool: "submit", answer: null, malformed: true };
+    // Instrument v2: a truncated, empty, unparsable or unknown-tool reply is
+    // retried once with the identical request, then invalidated — never a submit.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt === 1) retried = true;
+      const res = await chatDetailed(request);
+      usages.push(res.usage);
+      workerTokens.push(res.usage);
+      rawOutput = res.text;
+      finishReason = res.finish_reason;
+      finishReasonRaw = res.finish_reason_raw;
+      const parsed =
+        res.finish_reason === "length" || !res.text.trim()
+          ? null
+          : extractJson<{ reasoning?: string; tool?: string; key?: string; value?: string; answer?: string }>(res.text);
+      if (parsed && allowed.includes(String(parsed.tool))) {
+        reasoning = String(parsed.reasoning ?? "").slice(0, 4000);
+        action = {
+          tool: String(parsed.tool),
+          key: parsed.key ?? null,
+          value: parsed.value ?? null,
+          answer: parsed.answer ?? null,
+        };
+        invalid = false;
+        break;
+      }
+      invalid = true;
+      reasoning = parsed ? String(parsed.reasoning ?? "").slice(0, 4000) : res.text.slice(0, 2000);
+      action = { tool: "invalid" };
     }
   } catch (err) {
     const msg = err instanceof GatewayError ? `Gateway ${err.status}: ${err.message}` : String(err);
@@ -461,6 +473,7 @@ async function runAgentStep(
       observation: msg,
       monitor_severity: null,
       monitor_label: null,
+      retried,
     });
     await supabase
       .from("agents")
@@ -517,10 +530,14 @@ async function runAgentStep(
       .from("scratch")
       .upsert({ world_id: world.id, key, value, author_agent_id: agent.id }, { onConflict: "world_id,key" });
     observation = error ? `write failed: ${error.message}` : `write("${key}") -> saved`;
-  } else {
+  } else if (tool === "submit") {
     finished = true;
     answer = action["answer"] == null ? null : String(action["answer"]).slice(0, 1000);
     observation = `submitted: ${answer ?? "(no answer)"}`;
+  } else {
+    // tool === "invalid": not a submit, no answer recorded.
+    finished = true;
+    observation = `invalid reply (finish_reason=${finishReason ?? "unknown"}${retried ? ", after one retry" : ""}), agent invalidated`;
   }
 
   if (!finished && stepIndex + 1 >= effectiveBudget(cfg)) {
@@ -557,7 +574,9 @@ async function runAgentStep(
   const aware = await classifyAwareness(cfg, reasoning, action, observation);
   if (aware.usage) usages.push(aware.usage);
 
-  const tokens = sumTokens(usages);
+  // Per-step token fields record the worker call(s) only, on every provider.
+  void usages;
+  const tokens = sumTokens(workerTokens);
 
   const { data: stepRow } = await supabase
     .from("steps")
@@ -579,6 +598,10 @@ async function runAgentStep(
       tokens_reasoning: tokens.tokens_reasoning,
       awareness_label: aware.label,
       awareness_quote: aware.quote,
+      finish_reason: finishReason,
+      finish_reason_raw: finishReasonRaw,
+      retried,
+      invalid,
     })
     .select("id")
     .single();
@@ -587,7 +610,7 @@ async function runAgentStep(
     .from("agents")
     .update({
       step_count: stepIndex + 1,
-      status: finished ? "done" : "running",
+      status: invalid ? "invalidated" : finished ? "done" : "running",
       answer,
       ...(stepIndex === 0 ? { started_at: startedAt } : {}),
       ...(finished ? { finished_at: new Date().toISOString() } : {}),
@@ -596,6 +619,8 @@ async function runAgentStep(
 
   /* ---- emergence + alert bookkeeping ---- */
   const worldPatch: Record<string, unknown> = {};
+  const agentTask = (agent.task ?? {}) as Record<string, unknown>;
+  if (invalid && agentTask["interdependency"]) worldPatch["invalidated"] = true;
   if (crossAgentRead && !world.cross_agent_read) {
     worldPatch["cross_agent_read"] = true;
     worldPatch["first_cross_read_step"] = stepIndex;
