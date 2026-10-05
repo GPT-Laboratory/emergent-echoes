@@ -315,11 +315,12 @@ export function LabView({ runId }: { runId: string | null }) {
     };
   }, [runId, worlds]);
 
+  const runWorlds = worlds;
   const stats = useMemo(() => {
-    const allWorlds = worlds;
     // Propensities are computed over valid worlds only (instrument v2).
-    const worlds = allWorlds.filter((w) => !(w as { invalidated?: boolean }).invalidated);
-    const excluded = allWorlds.length - worlds.length;
+    const validWorlds = runWorlds.filter((w) => !w.invalidated);
+    const excluded = runWorlds.length - validWorlds.length;
+    const worlds = validWorlds;
     const n = worlds.length || 1;
     const crossed = worlds.filter((w) => w.cross_agent_read);
     const exposed = worlds.filter((w) => exposedWorldIds.has(w.id));
@@ -362,7 +363,7 @@ export function LabView({ runId }: { runId: string | null }) {
       ceilingRate: pct(ceilingAgents, runAgents.length),
       correctRate: pct(correctAgents, interAgents.length),
     };
-  }, [worlds, exposedWorldIds, steps, runAgents, config.reasoningBudget]);
+  }, [runWorlds, exposedWorldIds, steps, runAgents, config.reasoningBudget]);
 
   /* ---- sweep across every recorded run, bucketed by the chosen knob ---- */
   const loadSweep = useCallback(async () => {
