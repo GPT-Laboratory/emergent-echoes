@@ -160,6 +160,9 @@ function RootComponent() {
               <Link to="/runs" activeProps={{ className: "text-primary" }}>
                 Runs
               </Link>
+              <Link to="/rooms/$runId" params={{ runId: "latest" }} activeProps={{ className: "text-primary" }}>
+                Rooms
+              </Link>
               {signedIn && (
                 <Link to="/admin" activeProps={{ className: "text-primary" }}>
                   Approvals
