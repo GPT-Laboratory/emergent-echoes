@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -309,6 +310,10 @@ export function RunHeader({
       </p>
       <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted-foreground">
         {cfg.runNote?.trim() ? cfg.runNote : "no run note"}
+        {" · "}
+        <Link to="/broadcast/$runId" params={{ runId: row.id }} className="text-primary hover:underline">
+          Broadcast
+        </Link>
       </p>
       {progress && <ProgressBar progress={progress} status={row.status} />}
     </div>
