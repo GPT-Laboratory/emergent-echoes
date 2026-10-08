@@ -186,7 +186,7 @@ function BroadcastRoute() {
   );
 }
 
-function WorldStage({ worldId, worldIndex, live }: { worldId: string; worldIndex: number; live: boolean }) {
+export function WorldStage({ worldId, worldIndex, live }: { worldId: string; worldIndex: number; live: boolean }) {
   const { agents, steps, scratch } = useWorldDetail(worldId);
   const sortedAgents = useMemo(() => [...agents].sort((a, b) => a.index - b.index), [agents]);
   const letterOf = useMemo(() => {
@@ -512,6 +512,7 @@ function TopBar({ runId, current }: { runId: string | null; current: "broadcast"
             <Link to="/run/$runId" params={{ runId }} className={link(false)}>Run status</Link>
             <Link to="/broadcast/$runId" params={{ runId }} className={link(current === "broadcast")}>Broadcast</Link>
             <Link to="/rooms/$runId" params={{ runId }} className={link(current === "rooms")}>Rooms</Link>
+            <Link to="/split/$runId" params={{ runId }} className={link(false)}>Split</Link>
           </>
         )}
         <Link to="/picker" className={link(false)}>Picker</Link>
