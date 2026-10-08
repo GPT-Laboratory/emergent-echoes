@@ -79,7 +79,7 @@ function RoomsRoute() {
   );
 }
 
-function RoomsWorld({
+export function RoomsWorld({
   worldId,
   worlds,
   worldIdx,
@@ -241,7 +241,7 @@ function RoomsWorld({
   );
 }
 
-function TopBar({ runId, current }: { runId: string | null; current: "broadcast" | "rooms" }) {
+export function TopBar({ runId, current }: { runId: string | null; current: "broadcast" | "rooms" | "split" }) {
   const [row, setRow] = useState<RunRow | null>(null);
   const [reveal, setReveal] = useState(false);
   useEffect(() => {
@@ -275,6 +275,7 @@ function TopBar({ runId, current }: { runId: string | null; current: "broadcast"
             <Link to="/run/$runId" params={{ runId }} className={link(false)}>Run status</Link>
             <Link to="/broadcast/$runId" params={{ runId }} className={link(current === "broadcast")}>Broadcast</Link>
             <Link to="/rooms/$runId" params={{ runId }} className={link(current === "rooms")}>Rooms</Link>
+            <Link to="/split/$runId" params={{ runId }} className={link(current === "split")}>Split</Link>
           </>
         )}
         <Link to="/picker" className={link(false)}>Picker</Link>
