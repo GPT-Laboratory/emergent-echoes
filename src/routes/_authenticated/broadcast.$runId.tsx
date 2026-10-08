@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { RunHeader, type RunRow } from "@/components/lab/RunHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorldDetail, useWorlds, type AgentRow, type StepRow } from "@/lib/lab-client";
 
@@ -159,6 +160,7 @@ function BroadcastRoute() {
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col overflow-hidden bg-background text-foreground">
+      <TopBar runId={runId} current="broadcast" />
       {world ? (
         <WorldStage key={world.id} worldId={world.id} worldIndex={world.index} live={live} />
       ) : (
@@ -474,4 +476,50 @@ function TerminalPanel({
 function fmtElapsed(s: number) {
   const t = Math.floor(s);
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
+function TopBar({ runId, current }: { runId: string | null; current: "broadcast" | "rooms" }) {
+  const [row, setRow] = useState<RunRow | null>(null);
+  const [reveal, setReveal] = useState(false);
+  useEffect(() => {
+    if (!runId) return;
+    let cancelled = false;
+    const load = () =>
+      void supabase
+        .from("runs")
+        .select("id,status,config,started_at,created_at,finished_at,duration_ms,experiment_id")
+        .eq("id", runId)
+        .maybeSingle()
+        .then(({ data }) => !cancelled && data && setRow(data as unknown as RunRow));
+    load();
+    const id = setInterval(load, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [runId]);
+  const shown = useMemo(
+    () => (row && !reveal ? { ...row, config: { ...(row.config ?? {}), agentModel: "model hidden" } as RunRow["config"] } : row),
+    [row, reveal],
+  );
+  const link = (on: boolean) =>
+    ["font-mono text-[11px] uppercase tracking-widest", on ? "text-primary" : "text-muted-foreground hover:text-foreground"].join(" ");
+  return (
+    <div className="shrink-0 space-y-1 px-4 pt-2">
+      <div className="flex flex-wrap items-center gap-4">
+        {runId && (
+          <>
+            <Link to="/run/$runId" params={{ runId }} className={link(false)}>Run status</Link>
+            <Link to="/broadcast/$runId" params={{ runId }} className={link(current === "broadcast")}>Broadcast</Link>
+            <Link to="/rooms/$runId" params={{ runId }} className={link(current === "rooms")}>Rooms</Link>
+          </>
+        )}
+        <Link to="/picker" className={link(false)}>Picker</Link>
+        <button type="button" onClick={() => setReveal((v) => !v)} className={`${link(false)} ml-auto`}>
+          {reveal ? "Hide models" : "Reveal models"}
+        </button>
+      </div>
+      {shown && <RunHeader run={shown} />}
+    </div>
+  );
 }
