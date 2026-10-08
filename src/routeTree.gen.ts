@@ -13,6 +13,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedPickerRouteImport } from './routes/_authenticated/picker'
 import { Route as AuthenticatedRunsRouteImport } from './routes/_authenticated/runs'
 import { Route as AuthenticatedBroadcastRunIdRouteImport } from './routes/_authenticated/broadcast.$runId'
 import { Route as AuthenticatedExperimentExperimentIdRouteImport } from './routes/_authenticated/experiment.$experimentId'
@@ -38,6 +39,11 @@ const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPickerRoute = AuthenticatedPickerRouteImport.update({
+  id: '/picker',
+  path: '/picker',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedRunsRoute = AuthenticatedRunsRouteImport.update({
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/picker': typeof AuthenticatedPickerRoute
   '/runs': typeof AuthenticatedRunsRoute
   '/broadcast/$runId': typeof AuthenticatedBroadcastRunIdRoute
   '/experiment/$experimentId': typeof AuthenticatedExperimentExperimentIdRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/picker': typeof AuthenticatedPickerRoute
   '/runs': typeof AuthenticatedRunsRoute
   '/': typeof AuthenticatedIndexRoute
   '/broadcast/$runId': typeof AuthenticatedBroadcastRunIdRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/_authenticated/picker': typeof AuthenticatedPickerRoute
   '/_authenticated/runs': typeof AuthenticatedRunsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/broadcast/$runId': typeof AuthenticatedBroadcastRunIdRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/admin'
+    | '/picker'
     | '/runs'
     | '/broadcast/$runId'
     | '/experiment/$experimentId'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/auth'
     | '/admin'
+    | '/picker'
     | '/runs'
     | '/'
     | '/broadcast/$runId'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/admin'
+    | '/_authenticated/picker'
     | '/_authenticated/runs'
     | '/_authenticated/'
     | '/_authenticated/broadcast/$runId'
@@ -191,6 +203,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/picker': {
+      id: '/_authenticated/picker'
+      path: '/picker'
+      fullPath: '/picker'
+      preLoaderRoute: typeof AuthenticatedPickerRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/runs': {
@@ -261,6 +280,7 @@ const AuthenticatedRunRunIdRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedPickerRoute: typeof AuthenticatedPickerRoute
   AuthenticatedRunsRoute: typeof AuthenticatedRunsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedBroadcastRunIdRoute: typeof AuthenticatedBroadcastRunIdRoute
@@ -272,6 +292,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedPickerRoute: AuthenticatedPickerRoute,
   AuthenticatedRunsRoute: AuthenticatedRunsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedBroadcastRunIdRoute: AuthenticatedBroadcastRunIdRoute,
