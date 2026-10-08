@@ -314,6 +314,10 @@ export function RunHeader({
         <Link to="/broadcast/$runId" params={{ runId: row.id }} className="text-primary hover:underline">
           Broadcast
         </Link>
+        {" · "}
+        <Link to="/rooms/$runId" params={{ runId: row.id }} className="text-primary hover:underline">
+          Rooms
+        </Link>
       </p>
       {progress && <ProgressBar progress={progress} status={row.status} />}
     </div>
