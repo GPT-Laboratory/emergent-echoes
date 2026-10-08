@@ -20,6 +20,7 @@ import { Route as AuthenticatedExperimentExperimentIdRouteImport } from './route
 import { Route as AuthenticatedReplayRunIdRouteImport } from './routes/_authenticated/replay.$runId'
 import { Route as AuthenticatedRoomsRunIdRouteImport } from './routes/_authenticated/rooms.$runId'
 import { Route as AuthenticatedRunRunIdRouteImport } from './routes/_authenticated/run.$runId'
+import { Route as AuthenticatedSplitRunIdRouteImport } from './routes/_authenticated/split.$runId'
 import { Route as AuthenticatedRunRunIdWorldWorldIndexRouteImport } from './routes/_authenticated/run.$runId.world.$worldIndex'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
@@ -79,6 +80,11 @@ const AuthenticatedRunRunIdRoute = AuthenticatedRunRunIdRouteImport.update({
   path: '/run/$runId',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSplitRunIdRoute = AuthenticatedSplitRunIdRouteImport.update({
+  id: '/split/$runId',
+  path: '/split/$runId',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedRunRunIdWorldWorldIndexRoute =
   AuthenticatedRunRunIdWorldWorldIndexRouteImport.update({
     id: '/world/$worldIndex',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/replay/$runId': typeof AuthenticatedReplayRunIdRoute
   '/rooms/$runId': typeof AuthenticatedRoomsRunIdRoute
   '/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
+  '/split/$runId': typeof AuthenticatedSplitRunIdRoute
   '/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
 }
 export interface FileRoutesByTo {
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/replay/$runId': typeof AuthenticatedReplayRunIdRoute
   '/rooms/$runId': typeof AuthenticatedRoomsRunIdRoute
   '/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
+  '/split/$runId': typeof AuthenticatedSplitRunIdRoute
   '/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
 }
 export interface FileRoutesById {
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/_authenticated/replay/$runId': typeof AuthenticatedReplayRunIdRoute
   '/_authenticated/rooms/$runId': typeof AuthenticatedRoomsRunIdRoute
   '/_authenticated/run/$runId': typeof AuthenticatedRunRunIdRouteWithChildren
+  '/_authenticated/split/$runId': typeof AuthenticatedSplitRunIdRoute
   '/_authenticated/run/$runId/world/$worldIndex': typeof AuthenticatedRunRunIdWorldWorldIndexRoute
 }
 export interface FileRouteTypes {
@@ -140,6 +149,7 @@ export interface FileRouteTypes {
     | '/replay/$runId'
     | '/rooms/$runId'
     | '/run/$runId'
+    | '/split/$runId'
     | '/run/$runId/world/$worldIndex'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/replay/$runId'
     | '/rooms/$runId'
     | '/run/$runId'
+    | '/split/$runId'
     | '/run/$runId/world/$worldIndex'
   id:
     | '__root__'
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/_authenticated/replay/$runId'
     | '/_authenticated/rooms/$runId'
     | '/_authenticated/run/$runId'
+    | '/_authenticated/split/$runId'
     | '/_authenticated/run/$runId/world/$worldIndex'
   fileRoutesById: FileRoutesById
 }
@@ -254,6 +266,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRunRunIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/split/$runId': {
+      id: '/_authenticated/split/$runId'
+      path: '/split/$runId'
+      fullPath: '/split/$runId'
+      preLoaderRoute: typeof AuthenticatedSplitRunIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/run/$runId/world/$worldIndex': {
       id: '/_authenticated/run/$runId/world/$worldIndex'
       path: '/world/$worldIndex'
@@ -288,6 +307,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReplayRunIdRoute: typeof AuthenticatedReplayRunIdRoute
   AuthenticatedRoomsRunIdRoute: typeof AuthenticatedRoomsRunIdRoute
   AuthenticatedRunRunIdRoute: typeof AuthenticatedRunRunIdRouteWithChildren
+  AuthenticatedSplitRunIdRoute: typeof AuthenticatedSplitRunIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -301,6 +321,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReplayRunIdRoute: AuthenticatedReplayRunIdRoute,
   AuthenticatedRoomsRunIdRoute: AuthenticatedRoomsRunIdRoute,
   AuthenticatedRunRunIdRoute: AuthenticatedRunRunIdRouteWithChildren,
+  AuthenticatedSplitRunIdRoute: AuthenticatedSplitRunIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
