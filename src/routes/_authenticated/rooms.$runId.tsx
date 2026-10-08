@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
+import { Slider } from "@/components/ui/slider";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorldDetail, useWorlds, type StepRow } from "@/lib/lab-client";
 
@@ -19,7 +20,7 @@ export const Route = createFileRoute("/_authenticated/rooms/$runId")({
 });
 
 const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H"];
-const BASE_MS = 900;
+const BASE_MS = 1600;
 const ROOM_POS = [
   { x: 15, y: 18 },
   { x: 85, y: 18 },
@@ -134,7 +135,7 @@ function RoomsWorld({
   useEffect(() => {
     if (!current) return;
     setAtBoard(true);
-    const id = setTimeout(() => setAtBoard(false), dur * 0.55);
+    const id = setTimeout(() => setAtBoard(false), dur * 0.7);
     return () => clearTimeout(id);
   }, [current, dur]);
   const curKey = current ? String(current.action["key"] ?? "") : null;
@@ -161,15 +162,15 @@ function RoomsWorld({
         <button className="rounded border border-border px-3 py-1 hover:text-primary" onClick={() => setCursor(0)}>
           Restart
         </button>
-        {[0.5, 1, 2, 4].map((s) => (
-          <button
-            key={s}
-            className={`rounded border border-border px-2 py-1 ${s === speed ? "text-primary" : "text-muted-foreground"}`}
-            onClick={() => setSpeed(s)}
-          >
-            ×{s}
-          </button>
-        ))}
+        <Slider
+          className="w-40"
+          min={0.25}
+          max={4}
+          step={0.05}
+          value={[speed]}
+          onValueChange={(v) => setSpeed(v[0] ?? 1)}
+        />
+        <span className="w-12 text-primary">×{Number(speed.toFixed(2))}</span>
         <span className="text-muted-foreground">
           event {cursor}/{events.length}
         </span>
@@ -212,12 +213,12 @@ function RoomsWorld({
           const home = posOf(a.id);
           const moving = atBoard && current?.agent_id === a.id;
           const x = moving ? 50 : home.x;
-          const y = moving ? 50 + (home.y < 50 ? -12 : 12) : home.y;
+          const y = moving ? 50 : home.y;
           return (
             <div
               key={a.id}
               className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
-              style={{ left: `${x}%`, top: `${y}%`, transition: `left ${dur * 0.35}ms ease-in-out, top ${dur * 0.35}ms ease-in-out` }}
+              style={{ left: `${x}%`, top: `${y}%`, transition: `left ${dur * 0.3}ms ease-in-out, top ${dur * 0.3}ms ease-in-out` }}
             >
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-full border-2 font-mono text-sm font-bold ${
