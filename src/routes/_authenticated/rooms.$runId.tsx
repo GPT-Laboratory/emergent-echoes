@@ -55,6 +55,7 @@ function RoomsRoute() {
 
   const worlds = useWorlds(runId);
   const [worldIdx, setWorldIdx] = useState<number | null>(null);
+  const [mode, setMode] = useState<"single" | "continuous">("single");
   useEffect(() => {
     if (worldIdx == null && worlds.length)
       setWorldIdx(worlds.find((w) => w.cross_agent_read)?.index ?? worlds[0]!.index);
@@ -71,6 +72,8 @@ function RoomsRoute() {
           worlds={worlds.map((w) => w.index)}
           worldIdx={world.index}
           onWorld={setWorldIdx}
+          mode={mode}
+          onMode={setMode}
         />
       ) : (
         <p className="font-mono text-sm text-muted-foreground">loading run…</p>
@@ -84,11 +87,15 @@ export function RoomsWorld({
   worlds,
   worldIdx,
   onWorld,
+  mode,
+  onMode,
 }: {
   worldId: string;
   worlds: number[];
   worldIdx: number;
   onWorld: (i: number) => void;
+  mode?: "single" | "continuous";
+  onMode?: (m: "single" | "continuous") => void;
 }) {
   const { agents, steps } = useWorldDetail(worldId);
   const events = useMemo(
@@ -136,6 +143,16 @@ export function RoomsWorld({
     const id = setTimeout(() => setCursor((c) => c + 1), current?.cross_agent_read ? dur * 2.5 : dur);
     return () => clearTimeout(id);
   }, [playing, cursor, events.length, dur, current]);
+
+  // continuous mode: after the last event's hold, advance to the next world (stop after the last)
+  useEffect(() => {
+    if (mode !== "continuous" || !playing || !events.length || cursor < events.length) return;
+    const pos = worlds.indexOf(worldIdx);
+    const next = worlds[pos + 1];
+    if (next == null) return;
+    const id = setTimeout(() => onWorld(next), current?.cross_agent_read ? dur * 2.5 : dur);
+    return () => clearTimeout(id);
+  }, [mode, playing, cursor, events.length, worlds, worldIdx, onWorld, dur, current]);
   const board = useMemo(() => {
     const m = new Map<string, { value: string; letter: string }>();
     for (const e of events.slice(0, cursor)) {
@@ -180,6 +197,19 @@ export function RoomsWorld({
         <button className="rounded border border-border px-3 py-1 hover:text-primary" onClick={() => setCursor(0)}>
           Restart
         </button>
+        {onMode && (
+          <span className="inline-flex overflow-hidden rounded border border-border">
+            {(["single", "continuous"] as const).map((m) => (
+              <button
+                key={m}
+                className={`px-3 py-1 ${(mode ?? "single") === m ? "bg-primary/20 text-primary" : "hover:text-primary"}`}
+                onClick={() => onMode(m)}
+              >
+                {m === "single" ? "Single" : "Continuous"}
+              </button>
+            ))}
+          </span>
+        )}
         <Slider
           className="w-40"
           min={0.25}
