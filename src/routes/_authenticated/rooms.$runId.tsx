@@ -113,13 +113,29 @@ export function RoomsWorld({
   const [speed, setSpeed] = useState(1);
   const dur = BASE_MS / speed;
 
+  const current: StepRow | null = cursor > 0 ? (events[cursor - 1] ?? null) : null;
+  // coordination links: for each cross-agent read up to cursor, author = last writer of that key
+  const coord = useMemo(() => {
+    const lastWriter = new Map<string, string>();
+    const links: { author: string; reader: string; idx: number }[] = [];
+    events.slice(0, cursor).forEach((e, i) => {
+      const key = String(e.action["key"] ?? "");
+      if (e.action["tool"] === "write") lastWriter.set(key, e.agent_id);
+      else if (e.cross_agent_read) {
+        const author = lastWriter.get(key);
+        if (author && author !== e.agent_id) links.push({ author, reader: e.agent_id, idx: i });
+        else links.push({ author: "", reader: e.agent_id, idx: i });
+      }
+    });
+    return links;
+  }, [events, cursor]);
+  const curCoord = current?.cross_agent_read ? (coord.find((l) => l.idx === cursor - 1) ?? null) : null;
+
   useEffect(() => {
     if (!playing || cursor >= events.length) return;
-    const id = setTimeout(() => setCursor((c) => c + 1), dur);
+    const id = setTimeout(() => setCursor((c) => c + 1), current?.cross_agent_read ? dur * 2.5 : dur);
     return () => clearTimeout(id);
-  }, [playing, cursor, events.length, dur]);
-
-  const current: StepRow | null = cursor > 0 ? (events[cursor - 1] ?? null) : null;
+  }, [playing, cursor, events.length, dur, current]);
   const board = useMemo(() => {
     const m = new Map<string, { value: string; letter: string }>();
     for (const e of events.slice(0, cursor)) {
@@ -176,21 +192,67 @@ export function RoomsWorld({
         <span className="text-muted-foreground">
           event {cursor}/{events.length}
         </span>
+        <span className="text-success">coordination events: {coord.length}</span>
       </div>
 
       <div className="relative h-[75vh] min-h-[520px] overflow-hidden rounded-md border border-border bg-card/40">
         {agents.map((a) => {
           const p = ROOM_POS[a.index % ROOM_POS.length]!;
+          const lit = curCoord && (curCoord.author === a.id || curCoord.reader === a.id);
           return (
             <div
               key={a.id}
-              className="absolute h-[26%] w-[24%] -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-border bg-background/60 p-2"
+              className={`absolute h-[26%] w-[24%] -translate-x-1/2 -translate-y-1/2 rounded-md border-2 bg-background/60 p-2 transition-colors duration-500 ${
+                lit ? "border-success" : "border-border"
+              }`}
               style={{ left: `${p.x}%`, top: `${p.y}%` }}
             >
               <span className="label-caps">Room {LETTERS[a.index]}</span>
             </div>
           );
         })}
+
+        <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {coord.map((l, i) =>
+            l.author ? (
+              <line
+                key={i}
+                x1={posOf(l.author).x}
+                y1={posOf(l.author).y}
+                x2={posOf(l.reader).x}
+                y2={posOf(l.reader).y}
+                className="stroke-success"
+                strokeOpacity={0.3}
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+              />
+            ) : null,
+          )}
+          {curCoord?.author && (
+            <polyline
+              points={`${posOf(curCoord.author).x},${posOf(curCoord.author).y} 50,50 ${posOf(curCoord.reader).x},${posOf(curCoord.reader).y}`}
+              fill="none"
+              className="stroke-success"
+              strokeWidth={5}
+              strokeDasharray="14 10"
+              vectorEffect="non-scaling-stroke"
+            >
+              <animate attributeName="stroke-dashoffset" from="48" to="0" dur="1s" repeatCount="indefinite" />
+            </polyline>
+          )}
+        </svg>
+
+        {curCoord && (
+          <div className="absolute left-1/2 top-[22%] z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-success bg-background/95 px-6 py-3 text-center">
+            <div className="font-mono text-3xl font-bold text-success md:text-4xl">
+              Agent {letterOf[curCoord.reader]} read{" "}
+              {curCoord.author ? `Agent ${letterOf[curCoord.author]}'s` : "another agent's"} note
+            </div>
+            <div className="mt-1 font-mono text-sm uppercase tracking-widest text-muted-foreground">
+              coordination · nobody told them the other exists
+            </div>
+          </div>
+        )}
 
         <div className="absolute left-1/2 top-1/2 w-[34%] -translate-x-1/2 -translate-y-1/2 rounded-md border-2 border-primary/60 bg-background p-3">
           <div className="label-caps mb-2">Shared whiteboard</div>
