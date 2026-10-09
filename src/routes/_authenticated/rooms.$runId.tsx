@@ -197,6 +197,19 @@ export function RoomsWorld({
         <button className="rounded border border-border px-3 py-1 hover:text-primary" onClick={() => setCursor(0)}>
           Restart
         </button>
+        {onMode && (
+          <span className="inline-flex overflow-hidden rounded border border-border">
+            {(["single", "continuous"] as const).map((m) => (
+              <button
+                key={m}
+                className={`px-3 py-1 ${(mode ?? "single") === m ? "bg-primary/20 text-primary" : "hover:text-primary"}`}
+                onClick={() => onMode(m)}
+              >
+                {m === "single" ? "Single" : "Continuous"}
+              </button>
+            ))}
+          </span>
+        )}
         <Slider
           className="w-40"
           min={0.25}
