@@ -77,7 +77,7 @@ export function useWorlds(runId: string | null) {
     void load();
 
     const channel = supabase
-      .channel(`worlds-${runId}`)
+      .channel(`worlds-${runId}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "worlds" }, () => void load())
       .subscribe();
 
@@ -117,7 +117,7 @@ export function useRunSteps(runId: string | null) {
     void load();
 
     const channel = supabase
-      .channel(`steps-${runId}`)
+      .channel(`steps-${runId}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "steps" }, () => void load())
       .subscribe();
 
@@ -158,7 +158,7 @@ export function useWorldDetail(worldId: string) {
     void load();
 
     const channel = supabase
-      .channel(`world-${worldId}`)
+      .channel(`world-${worldId}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "steps" }, () => void load())
       .on("postgres_changes", { event: "*", schema: "public", table: "scratch" }, () => void load())
       .on("postgres_changes", { event: "*", schema: "public", table: "alerts" }, () => void load())
