@@ -1,4 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
+
+import { requireAdmin as requireLabAdmin, requireApproved as requireApprovedUser } from "./lab-auth";
 import { z } from "zod";
 
 import {
@@ -182,6 +184,7 @@ function effectiveBudget(cfg: LabConfig) {
 /* ------------------------------------------------------------------ */
 
 export const createRun = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) =>
     z
       .object({
@@ -214,6 +217,7 @@ export const createRun = createServerFn({ method: "POST" })
  * an experiment so the pooled rate and its confidence interval are reportable.
  */
 export const createReplicateSet = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) => z.object({ config: ConfigSchema }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
@@ -251,6 +255,7 @@ export const createReplicateSet = createServerFn({ method: "POST" })
   });
 
 export const stopRun = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) => z.object({ runId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
@@ -268,6 +273,7 @@ export const stopRun = createServerFn({ method: "POST" })
   });
 
 export const recordHumanAction = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) =>
     z.object({ alertId: z.string().uuid(), action: z.enum(["no_action", "stop_world"]) }).parse(d),
   )
@@ -299,6 +305,7 @@ type AgentRow = {
 };
 
 export const tickWorld = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) => z.object({ worldId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
@@ -333,6 +340,7 @@ export const tickWorld = createServerFn({ method: "POST" })
  * The caller loops per agent, so agents interleave purely by model latency.
  */
 export const stepAgent = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) => z.object({ agentId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
@@ -691,6 +699,7 @@ async function classifyAwareness(
  * Idempotent and restartable — the caller loops until remaining hits zero.
  */
 export const classifyAwarenessBatch = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) =>
     z.object({ runId: z.string().uuid().optional(), limit: z.number().int().min(1).max(40).default(20) }).parse(d),
   )
@@ -737,6 +746,7 @@ export const classifyAwarenessBatch = createServerFn({ method: "POST" })
 
 /** How many stored steps still lack an awareness label. */
 export const awarenessBacklog = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) => z.object({ runId: z.string().uuid().optional() }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
@@ -759,6 +769,7 @@ export const awarenessBacklog = createServerFn({ method: "POST" })
  * own severity bands, so rare high-severity steps are never sampled away.
  */
 export const codingSample = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) =>
     z
       .object({
@@ -828,6 +839,7 @@ export const codingSample = createServerFn({ method: "POST" })
 
 /** Store hand-coded rows; one coding per step, re-importing overwrites it. */
 export const importCodings = createServerFn({ method: "POST" })
+  .middleware([requireLabAdmin])
   .inputValidator((d: unknown) =>
     z
       .object({
@@ -860,6 +872,7 @@ export const importCodings = createServerFn({ method: "POST" })
 
 /** Agreement between the monitor and the human codings stored so far. */
 export const monitorValidation = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator(() => ({}))
   .handler(async () => {
     const supabase = await db();
@@ -1397,6 +1410,7 @@ async function buildRunExport(supabase: Supa, runId: string) {
 export type RunExport = Awaited<ReturnType<typeof buildRunExport>>;
 
 export const exportRun = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) => z.object({ runId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => buildRunExport(await db(), data.runId));
 
@@ -1405,6 +1419,7 @@ export const exportRun = createServerFn({ method: "POST" })
 /* ------------------------------------------------------------------ */
 
 export const createSweep = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) =>
     z
       .object({
@@ -1482,6 +1497,7 @@ export const createSweep = createServerFn({ method: "POST" })
 
 /** Flip a queued sweep run to running so its worlds start ticking. */
 export const activateRun = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) => z.object({ runId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
@@ -1494,6 +1510,7 @@ export const activateRun = createServerFn({ method: "POST" })
   });
 
 export const finishExperiment = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) =>
     z.object({ experimentId: z.string().uuid(), status: z.enum(["complete", "stopped"]).default("complete") }).parse(d),
   )
@@ -1508,6 +1525,7 @@ export const finishExperiment = createServerFn({ method: "POST" })
   });
 
 export const stopSweep = createServerFn({ method: "POST" })
+  .middleware([requireLabAdmin])
   .inputValidator((d: unknown) => z.object({ experimentId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
@@ -1853,6 +1871,7 @@ export function pointStats(allReplicates: ReadonlyArray<ReadonlyArray<StatWorld>
 
 
 export const exportExperiment = createServerFn({ method: "POST" })
+  .middleware([requireApprovedUser])
   .inputValidator((d: unknown) => z.object({ experimentId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const supabase = await db();
