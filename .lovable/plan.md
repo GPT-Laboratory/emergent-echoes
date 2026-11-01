@@ -1,23 +1,19 @@
-# Health check report (read-only)
+# Security health check (read-only)
 
-## Security
-- **High** — All 17 lab server actions (`createRun`, `stepAgent`, `tickWorld`, `createSweep`, `exportRun`, `importCodings`, etc.) have no auth check and use the service-role client. Anyone can call them directly to start runs (spending Anthropic/AI credits), stop runs, overwrite codings or export all data. Fix: add `requireSupabaseAuth` plus an `is_approved` check to each (admin-only for `importCodings`/`stopSweep`).
-- **Medium** — `ANTHROPIC_API_KEY` and `LOVABLE_API_KEY` are only read server-side in `ai.server.ts`. No secrets found in client code (the publishable key is fine). Fix: none needed. Keep it that way.
-- **Medium** — Every table has RLS: reads need approval, writes are denied to clients. `account_requests` only allows inserts with `pending` status. `access.functions.ts` uses auth middleware. Fix: none needed. Run the security scanner once to confirm grants.
-- **Low** — No Supabase edge functions and no `/api/public` routes, so there are no unauthenticated endpoints beyond the server actions above.
+## Previously known issues
+- **Fixed** — Unauthenticated lab server actions: all 18 now require a signed-in, approved user. `importCodings` and `stopSweep` are admin-only, and every action validates its input.
+- **High, still present** — Browser-driven runs can stay `running` forever. There is still no stale-run sweeper. Fix: mark a run/world/agent `stopped` when it has had no new step for N minutes, on read or on a schedule.
 
-## Reliability
-- **High** — The run driver is browser-driven. If the tab closes mid-run, runs and worlds stay `running` forever and inflate progress and ETA. Fix: add a stale-run sweeper that marks runs `stopped` after N minutes without new steps.
-- **Medium** — Async scheduler: two tabs, or Split plus the Lab page, can drive the same run at once. That causes duplicate `step_index` and double model calls. Fix: add a unique `(agent_id, step_index)` constraint and a conditional "claim step" update.
-- **Medium** — The 45 s timeout and 3 retries per call, plus a per-step monitor and classifier, give a long tail under load. Many worlds in parallel can also hit gateway rate limits (429). Fix: limit concurrency per run in the driver.
-- **Medium** — `lab.functions.ts` is about 85 KB in one module, so regressions there are likely. There are no tests for the stats, Wilson CI or the g2 task generator. Fix: add small unit tests for `stats.ts` and `tasks.ts`.
-- **Low** — `EFFORT_REJECTED` is an in-memory set per worker isolate. Its state is lost between requests, so the first call per isolate retries. Fix: harmless, or persist the result per model.
+## Findings
+- **Medium** — Any approved user can spend AI credits without limit: up to 20 worlds × 8 agents × 30 steps × 10 replicates, plus repeated sweeps, with no per-user quota or concurrency cap. Fix: add a per-user active-run limit and a daily step/cost cap checked in `createRun`/`createSweep`/`stepAgent`.
+- **Medium** — `stopRun`, `activateRun`, `finishExperiment` and `recordHumanAction` let any approved user change anyone's run. Runs have no owner column. Fix: add `created_by` to runs/experiments, and allow only the owner or an admin to change them.
+- **Medium** — `stepAgent`/`tickWorld` accept any agent or world ID, with no check that the run is still running and not already being stepped. Repeated calls cost model credits twice. Fix: refuse when the run is not `running`, and claim the step atomically using a unique `(agent_id, step_index)`.
+- **Low** — Linter: `has_role` and `is_approved` are SECURITY DEFINER and callable by signed-in users. Each only answers yes/no about a user ID you pass in, so another user's role or approval status can be checked. Fix: accept this, or wrap them so they only check `auth.uid()`.
+- **Low** — RLS: all lab tables have RLS on, reads are approved-only, and client writes are denied. `account_requests` inserts are limited to own row + `pending`, and only admins can decide. Fix: none.
+- **Low** — Secrets: `ANTHROPIC_API_KEY`, `LOVABLE_API_KEY` and the service-role key are read only in server-only modules. `prompt-spec.ts` mentions the key name only as text, not its value. Fix: none.
+- **Low** — No edge functions and no `/api/public` routes, so there are no unauthenticated HTTP endpoints. Fix: none.
+- **Low** — `decideAccessRequest` checks admin by reading `user_roles` itself instead of using the shared `requireAdmin` middleware. Fix: switch to `requireAdmin` for consistency.
+- **Low** — Exports return all reasoning and raw outputs to any approved user. This is intended for approved users, but approval is the only barrier. Fix: keep approval strict, and optionally limit bulk export to admins.
 
-## Dead weight
-- **Low** — About 46 shadcn UI components and unused packages (`embla-carousel-react`, `input-otp`, `react-day-picker`, `vaul`, `cmdk`, `react-resizable-panels`, likely `react-hook-form`) remain. Fix: remove the unused ones after confirming with `rg`.
-- **Low** — `drizzle-kit`, `drizzle-orm` and `drizzle.config.ts` are unused because the schema is managed by migrations. Fix: remove them.
-- **Low** — There are overlapping views: `replay.$runId`, `broadcast`, `rooms` and `split`. Fix: decide whether `replay` is still needed.
-- **Low** — The `scratch.author_agent_id` and `alerts` tables appear lightly used. Fix: verify their usage before dropping anything.
-
-## Proposed next step (if approved)
-Fix the High items only: add auth and approval guards on the lab server actions, and add a stale-run cleanup.
+## Suggested next step (if approved)
+Add the stale-run sweeper and a per-user run/cost cap.
