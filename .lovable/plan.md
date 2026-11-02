@@ -1,19 +1,21 @@
-# Security health check (read-only)
+# Health check reports (read-only)
 
-## Previously known issues
-- **Fixed** — Unauthenticated lab server actions: all 18 now require a signed-in, approved user. `importCodings` and `stopSweep` are admin-only, and every action validates its input.
-- **High, still present** — Browser-driven runs can stay `running` forever. There is still no stale-run sweeper. Fix: mark a run/world/agent `stopped` when it has had no new step for N minutes, on read or on a schedule.
+## Reliability
+- **High** — `run-driver.ts`: runs are driven by the browser. Closing the tab leaves runs, worlds and agents `running` forever, so progress, ETA and pooled stats are wrong. Fix: add a stale-run sweeper that stops runs with no new step for N minutes.
+- **High** — `lab.functions.ts` `stepAgent`/`tickWorld`: nothing stops the same agent being stepped twice at once (two tabs, Split plus the Lab page, or a retry after a timeout). That can give duplicate `step_index` values and double model calls. Fix: add a unique `(agent_id, step_index)` constraint and a conditional "claim step" update.
+- **Medium** — `LabView.tsx` Run / Sweep buttons: they are not disabled while `start()` is still in progress. A double click creates two runs and two drivers. Fix: keep a `starting` state and disable both buttons while it is set.
+- **Medium** — `run-driver.ts` `withRetry`: if a step fails for a non-transient reason, it returns `null`. The async loop then treats that as done and drops the agent, which stays `running` in the database. Fix: on a final failure, mark the agent `error` on the server, or keep retrying with backoff.
+- **Medium** — `run-driver.ts` `startDriver`: the run is marked `complete` in the browser even if ticks failed, and the `.update()` result is never checked. Fix: complete the run on the server when the last world closes, and check the error.
+- **Medium** — `run-driver.ts` `startSweep`: if `activate` throws (for example an auth error), it rejects without being caught. The sweep is never finished and `sweepProgress` stays active. Fix: wrap each point in try/catch and call `finish("stopped")` from a `finally`.
+- **Medium** — `run-driver.ts`: `sweepProgress` and the driving/cancelled sets are module globals for one tab. A second tab cannot see or stop a sweep. Fix: read sweep state from `experiments`/`runs` in the database.
+- **Medium** — `ai.server.ts`: 45 s timeout × 3 attempts, plus monitor and classifier calls per step, can push one step past the worker request limit. Fix: lower the timeout or the attempt count, or move monitoring off the critical path.
+- **Medium** — `lab.functions.ts` (~85 KB in one module) has no tests for `stats.ts` (Wilson CI) or the g2 generator in `tasks.ts`. Fix: add small unit tests for these.
+- **Low** — Many Supabase calls in `run-driver.ts`, `picker.tsx` and the Rooms/Broadcast views ignore the returned `error`, so failures show up as empty data instead of an error message. Fix: show an error state when `error` is set.
+- **Low** — Timers and live-update connections: every view that creates them also cleans them up, and channel names are now unique. No leaks found. Fix: none.
+- **Low** — `ai.server.ts` `EFFORT_REJECTED` is in memory for each worker instance, so the first call after a restart repeats the rejected request. Fix: harmless; optionally save it per model.
+- **Low** — Build and console: the latest build is OK, and there are no runtime or console errors in the logs. The dev server warns that `vite-tsconfig-paths` is redundant. Fix: use `resolve.tsconfigPaths: true` and remove the plugin.
 
-## Findings
-- **Medium** — Any approved user can spend AI credits without limit: up to 20 worlds × 8 agents × 30 steps × 10 replicates, plus repeated sweeps, with no per-user quota or concurrency cap. Fix: add a per-user active-run limit and a daily step/cost cap checked in `createRun`/`createSweep`/`stepAgent`.
-- **Medium** — `stopRun`, `activateRun`, `finishExperiment` and `recordHumanAction` let any approved user change anyone's run. Runs have no owner column. Fix: add `created_by` to runs/experiments, and allow only the owner or an admin to change them.
-- **Medium** — `stepAgent`/`tickWorld` accept any agent or world ID, with no check that the run is still running and not already being stepped. Repeated calls cost model credits twice. Fix: refuse when the run is not `running`, and claim the step atomically using a unique `(agent_id, step_index)`.
-- **Low** — Linter: `has_role` and `is_approved` are SECURITY DEFINER and callable by signed-in users. Each only answers yes/no about a user ID you pass in, so another user's role or approval status can be checked. Fix: accept this, or wrap them so they only check `auth.uid()`.
-- **Low** — RLS: all lab tables have RLS on, reads are approved-only, and client writes are denied. `account_requests` inserts are limited to own row + `pending`, and only admins can decide. Fix: none.
-- **Low** — Secrets: `ANTHROPIC_API_KEY`, `LOVABLE_API_KEY` and the service-role key are read only in server-only modules. `prompt-spec.ts` mentions the key name only as text, not its value. Fix: none.
-- **Low** — No edge functions and no `/api/public` routes, so there are no unauthenticated HTTP endpoints. Fix: none.
-- **Low** — `decideAccessRequest` checks admin by reading `user_roles` itself instead of using the shared `requireAdmin` middleware. Fix: switch to `requireAdmin` for consistency.
-- **Low** — Exports return all reasoning and raw outputs to any approved user. This is intended for approved users, but approval is the only barrier. Fix: keep approval strict, and optionally limit bulk export to admins.
-
-## Suggested next step (if approved)
-Add the stale-run sweeper and a per-user run/cost cap.
+## Security (previous report)
+- **Fixed** — Lab server actions now require a signed-in, approved user (admin for `importCodings`/`stopSweep`), with input validation.
+- **Medium** — There is no per-user cap on AI spend, and runs have no owner, so any approved user can stop or change anyone's run. Fix: add a quota and a `created_by` owner check.
+- **Low** — `has_role`/`is_approved` are SECURITY DEFINER functions that signed-in users can call. RLS is on for every table, no secrets are in browser code, and there are no public endpoints.
