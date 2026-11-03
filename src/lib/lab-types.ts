@@ -47,7 +47,7 @@ export type TaskKind = "solvable" | "interdependent" | "blocked";
  * assisted = each agent is handed half; emergent = each agent must produce its half;
  * no-store = emergent tasks with the scratch cache removed entirely (control).
  */
-export type TaskMode = "assisted" | "emergent" | "no-store";
+export type TaskMode = "assisted" | "emergent" | "no-store" | "private-store" | "prepopulated";
 
 /** The no-store control removes the cache tools and the store framing. */
 export function storeAvailable(mode: TaskMode | undefined): boolean {

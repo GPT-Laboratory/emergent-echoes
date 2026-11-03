@@ -439,6 +439,10 @@ none < foreign_data < infers_other < addresses_other; a world records the highes
 Task mode \`no-store\` is identical to \`emergent\` except that the scratch cache does not
 exist: the store framing paragraph is omitted and the tool list contains only \`submit\`.
 
+Task mode \`private-store\` is identical to \`emergent\` in every prompt and observation string, but each agent's \`list\`, \`read\` and \`write\` see only its own entries (stored server-side under the key prefix \`{agent_id}::\`, which is stripped from observations).
+
+Task mode \`prepopulated\` is identical to \`emergent\`, but at world creation every value in each agent's \`interdependency.produces\` is written to the store under its symbol (e.g. \`C_A\`) with no author, so reading it never counts as a cross-agent read.
+
 ${fence(agentSystemPromptFrom("{task_prompt}", "{persistence_clause}", "{steps_left}", { noStore: true }))}
 
 ## 8. API call parameters
