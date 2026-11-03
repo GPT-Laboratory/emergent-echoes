@@ -172,7 +172,9 @@ async function insertReplicate(
         })),
       );
       if (seeded.length) {
-        const { error: se } = await supabase.from("scratch").insert(seeded as never);
+        const { error: se } = await supabase
+          .from("scratch")
+          .upsert(seeded as never, { onConflict: "world_id,key", ignoreDuplicates: true });
         if (se) throw new Error(se.message);
       }
     }
