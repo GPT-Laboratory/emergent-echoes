@@ -66,7 +66,7 @@ function agentEffortEffective(cfg: LabConfig): string {
 
 const ConfigSchema = z
   .object({
-    taskMode: z.enum(["assisted", "emergent", "no-store"]).default("assisted"),
+    taskMode: z.enum(["assisted", "emergent", "no-store", "private-store", "prepopulated"]).default("assisted"),
     schedulerMode: z.enum(["lockstep", "async"]).default("lockstep"),
     worldCount: z.number().int().min(1).max(20),
     agentsPerWorld: z.number().int().min(2).max(8),
@@ -160,6 +160,24 @@ async function insertReplicate(
     }));
     const { error: ae } = await supabase.from("agents").insert(rows as never);
     if (ae) throw new Error(ae.message);
+
+    // Prepopulated control: every produced value is in the store from the start, authorless.
+    if (cfg.taskMode === "prepopulated") {
+      const seeded = tasks.flatMap((t) =>
+        Object.entries(t.interdependency.produces ?? {}).map(([key, value]) => ({
+          world_id: world.id,
+          key,
+          value: String(value),
+          author_agent_id: null,
+        })),
+      );
+      if (seeded.length) {
+        const { error: se } = await supabase
+          .from("scratch")
+          .upsert(seeded as never, { onConflict: "world_id,key", ignoreDuplicates: true });
+        if (se) throw new Error(se.message);
+      }
+    }
   }
 
   return { runId: run.id as string, replicateIndex: opts.replicateIndex, replicateSeed };
@@ -508,14 +526,17 @@ async function runAgentStep(
   let answer: string | null = null;
 
   const tool = String(action["tool"]);
+  // Private-store control: each agent's entries live under its own key prefix.
+  const prefix = cfg.taskMode === "private-store" ? `${agent.id}::` : "";
   if (tool === "list") {
-    const { data: rows } = await supabase
+    const { data: allRows } = await supabase
       .from("scratch")
       .select("key,author_agent_id")
       .eq("world_id", world.id)
       .order("created_at");
-    const keys = (rows ?? []).map((r) => r.key);
-    foreignKeys = (rows ?? [])
+    const rows = prefix ? (allRows ?? []).filter((r) => r.key.startsWith(prefix)) : (allRows ?? []);
+    const keys = rows.map((r) => r.key.slice(prefix.length));
+    foreignKeys = rows
       .filter((r) => r.author_agent_id && r.author_agent_id !== agent.id)
       .map((r) => r.key);
     observation = keys.length ? `keys: ${keys.join(", ")}` : "keys: (cache is empty)";
@@ -525,7 +546,7 @@ async function runAgentStep(
       .from("scratch")
       .select("key,value,author_agent_id")
       .eq("world_id", world.id)
-      .eq("key", key)
+      .eq("key", prefix + key)
       .maybeSingle();
     if (!row) {
       observation = `read("${key}") -> no value stored at that key`;
@@ -541,7 +562,7 @@ async function runAgentStep(
     const value = String(action["value"] ?? "").slice(0, STORE_WRITE_LIMIT);
     const { error } = await supabase
       .from("scratch")
-      .upsert({ world_id: world.id, key, value, author_agent_id: agent.id }, { onConflict: "world_id,key" });
+      .upsert({ world_id: world.id, key: prefix + key, value, author_agent_id: agent.id }, { onConflict: "world_id,key" });
     observation = error ? `write failed: ${error.message}` : `write("${key}") -> saved`;
   } else if (tool === "submit") {
     finished = true;
