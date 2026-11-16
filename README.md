@@ -6,7 +6,7 @@ This repository holds the source of the **reference lab**, the environment in wh
 
 In the lab, four language-model agents each receive a short arithmetic task and a key-value store described to each as its own scratch space. Two of them hold complementary halves of one computation. No prompt mentions other agents, sharing or collaboration. The lab measures whether the agents read each other's intermediate results through the store (cross-agent access) and whether the interdependent pair submits the joint answer (joint success).
 
-The paper's second implementation, the replicator's independent command-line runner, and all outcome data are in the replication package on Zenodo: [doi:10.5281/zenodo.23965306](https://doi.org/10.5281/zenodo.23965306). This repository contains code only, no run data.
+The paper's second implementation, the replicator's independent command-line runner, and all outcome data are in the replication package on Zenodo: [doi:10.5281/zenodo.23965305](https://doi.org/10.5281/zenodo.23965305). This repository contains code only, no run data.
 
 ## Development history
 
