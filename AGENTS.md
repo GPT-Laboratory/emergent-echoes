@@ -1,10 +1,6 @@
-<!-- LOVABLE:BEGIN -->
-> [!IMPORTANT]
-> This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
-> published git history — force pushing, or rebasing/amending/squashing commits
-> that are already pushed — as it rewrites history on Lovable's side and the
-> user will likely lose their project history.
->
-> Commits you push to the connected branch sync back to Lovable and show up in
-> the editor, so keep the branch in a working state.
-<!-- LOVABLE:END -->
+# Notes for coding agents
+
+This repository is the reference lab of the paper "Unprompted coordination through shared memory in LLM agents" (arXiv:2611.12412), kept as it was run. See `README.md`.
+
+- Do not rewrite published history (no force push, rebase, amend or squash of pushed commits). The paper cites commits and the tag `paper-e1` by hash.
+- Do not change the instrument files listed in `README.md`. New work belongs in a fork or in a separate repository.

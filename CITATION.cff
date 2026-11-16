@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "Emergent Echoes: reference lab for unprompted coordination through shared memory in LLM agents"
+type: software
+license: MIT
+authors:
+  - family-names: Abrahamsson
+    given-names: Pekka
+    orcid: "https://orcid.org/0000-0002-4360-2226"
+    affiliation: Tampere University
+repository-code: "https://github.com/GPT-Laboratory/emergent-echoes"
+preferred-citation:
+  type: article
+  title: "Unprompted coordination through shared memory in LLM agents: a locked two-implementation replication and extension"
+  year: 2026
+  url: "https://arxiv.org/abs/2611.12412"
+  identifiers:
+    - type: other
+      value: "arXiv:2611.12412"
+  authors:
+    - family-names: Abrahamsson
+      given-names: Pekka
+      orcid: "https://orcid.org/0000-0002-4360-2226"
+    - family-names: Waseem
+      given-names: Muhammad
+      orcid: "https://orcid.org/0000-0002-0923-1476"
+    - family-names: Karjalainen
+      given-names: Esa
+      orcid: "https://orcid.org/0009-0005-9227-7094"
+    - family-names: Jussila
+      given-names: Petrus
+      orcid: "https://orcid.org/0009-0006-5152-2273"
+    - family-names: Hansen
+      given-names: Henri
+      orcid: "https://orcid.org/0000-0002-2569-7954"
+    - family-names: Rasku
+      given-names: Jussi
+      orcid: "https://orcid.org/0000-0002-4401-8013"
+    - family-names: Silverajan
+      given-names: Bilhanan
+      orcid: "https://orcid.org/0000-0001-6565-8776"
+    - family-names: Kemell
+      given-names: Kai-Kristian
+      orcid: "https://orcid.org/0000-0002-0225-4560"
